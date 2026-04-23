@@ -16,6 +16,7 @@ import { ColumnDrawer } from "../../records-table/ColumnDrawer";
 import { PreviewPanel } from "../../records-table/PreviewPanel";
 import { ImportJsonDialog } from "../../records-table/ImportJsonDialog";
 import { ImportResultNotification } from "../../records-table/ImportResultNotification";
+import { RowNavigatorDrawer } from "../../records-table/RowNavigatorDrawer";
 import { useTableSelection } from "../../records-table/hooks/useTableSelection";
 import { useColumnVisibility } from "../../records-table/hooks/useColumnVisibility";
 import { useAIGeneration } from "../../records-table/hooks/useAIGeneration";
@@ -69,6 +70,8 @@ export function RecordsTable() {
     failed: number;
     errors: Array<{ index: number; record: unknown; error: string }>;
   } | null>(null);
+  const [showRowNavigator, setShowRowNavigator] = useState(false);
+  const [currentRowIndex, setCurrentRowIndex] = useState(0);
 
   const {
     visibleColumnKeys,
@@ -236,6 +239,11 @@ export function RecordsTable() {
   const handleShowImportJsonDialog = useCallback(() => {
     setShowImportJsonDialog(true);
     setImportResult(null);
+  }, []);
+
+  const handleShowRowNavigator = useCallback(() => {
+    setShowRowNavigator((prev) => !prev);
+    setCurrentRowIndex(0);
   }, []);
 
   const handleImportJson = useCallback(async (jsonData: unknown[]) => {
@@ -453,6 +461,7 @@ export function RecordsTable() {
             onShowAISettings={() => setShowAISettings(true)}
             onShowAIBulkDialog={handleShowAIBulkDialog}
             onShowImportJsonDialog={handleShowImportJsonDialog}
+            onShowRowNavigator={handleShowRowNavigator}
             onShowFilters={() => setShowFilterDrawer(true)}
             activeFilterCount={activeFilterCount}
             hasActiveFilters={hasActiveFilters}
@@ -628,6 +637,17 @@ export function RecordsTable() {
           onDismiss={() => setImportResult(null)}
         />
       )}
+
+      <RowNavigatorDrawer
+        isOpen={showRowNavigator}
+        onClose={() => setShowRowNavigator(false)}
+        records={filteredRecords}
+        columns={displayColumns}
+        currentIndex={currentRowIndex}
+        onIndexChange={setCurrentRowIndex}
+        onUpdateCell={updateCell}
+        relationOptions={relationOptions}
+      />
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { Plus, Trash2, Save, Columns, Settings, Wand2, Filter, Upload } from "lucide-react";
+import { Plus, Trash2, Save, Columns, Settings, Wand2, Filter, Upload, LayoutList } from "lucide-react";
 import { Button } from "../../atoms/Button";
 
 export interface TableActionsProps {
@@ -13,6 +13,7 @@ export interface TableActionsProps {
   onShowAISettings: () => void;
   onShowAIBulkDialog: () => void;
   onShowImportJsonDialog?: () => void;
+  onShowRowNavigator?: () => void;
   onShowFilters?: () => void;
   activeFilterCount?: number;
   hasActiveFilters?: boolean;
@@ -30,6 +31,7 @@ export function RecordsTableActions({
   onShowAISettings,
   onShowAIBulkDialog,
   onShowImportJsonDialog,
+  onShowRowNavigator,
   onShowFilters,
   activeFilterCount = 0,
   hasActiveFilters = false,
@@ -67,6 +69,15 @@ export function RecordsTableActions({
         >
           Columns
         </Button>
+        {onShowRowNavigator && (
+          <Button
+            onClick={onShowRowNavigator}
+            variant="secondary"
+            icon={<LayoutList className="w-4 h-4" />}
+          >
+            Row Navigator
+          </Button>
+        )}
         {onShowFilters && (
           <Button
             onClick={onShowFilters}
