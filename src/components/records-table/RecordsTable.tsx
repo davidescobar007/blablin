@@ -201,17 +201,10 @@ export function RecordsTable() {
               column={col}
               value={value}
               isExpanded={isExpanded}
-              isPreview={previewMode[cellKey]}
               onToggleExpand={() => {
                 setExpandedCells((prev) => ({
                   ...prev,
                   [cellKey]: !isExpanded,
-                }));
-              }}
-              onTogglePreview={() => {
-                setPreviewMode((prev) => ({
-                  ...prev,
-                  [cellKey]: !prev[cellKey],
                 }));
               }}
               onUpdate={(newValue) => {

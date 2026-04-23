@@ -15,8 +15,6 @@ export interface TableBodyProps {
   aiGenerating: Record<string, boolean>;
   expandedCells: Record<string, boolean>;
   setExpandedCells: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  previewMode: Record<string, boolean>;
-  setPreviewMode: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 }
 
 export function RecordsTableBody({
@@ -31,8 +29,6 @@ export function RecordsTableBody({
   aiGenerating,
   expandedCells,
   setExpandedCells,
-  previewMode,
-  setPreviewMode,
 }: TableBodyProps) {
   return (
     <tbody className="divide-y divide-slate-200">
@@ -71,17 +67,9 @@ export function RecordsTableBody({
                       column={displayColumn}
                       value={row.original.data[displayColumn.key]}
                       isExpanded={expandedCells[`${row.original.id}-${displayColumn.key}`]}
-                      isPreview={previewMode[`${row.original.id}-${displayColumn.key}`]}
                       onToggleExpand={() => {
                         const cellKey = `${row.original.id}-${displayColumn.key}`;
                         setExpandedCells((prev: Record<string, boolean>) => ({
-                          ...prev,
-                          [cellKey]: !prev[cellKey],
-                        }));
-                      }}
-                      onTogglePreview={() => {
-                        const cellKey = `${row.original.id}-${displayColumn.key}`;
-                        setPreviewMode((prev: Record<string, boolean>) => ({
                           ...prev,
                           [cellKey]: !prev[cellKey],
                         }));

@@ -26,9 +26,7 @@ export interface CellEditorProps {
   column: Column;
   value: unknown;
   isExpanded: boolean;
-  isPreview: boolean;
   onToggleExpand: () => void;
-  onTogglePreview: () => void;
   onUpdate: (newValue: unknown) => void;
   onCellFocus?: (
     recordId: string,

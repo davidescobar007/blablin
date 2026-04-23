@@ -10,7 +10,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-screen-2xl mx-auto">
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
             <Database className="w-8 h-8 text-blue-600" />
