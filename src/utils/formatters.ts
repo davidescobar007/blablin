@@ -141,3 +141,97 @@ export function getRowStateIndicator(
       return null;
   }
 }
+
+function escapeString(str: string, quoteChar: '"' | "'"): string {
+  if (quoteChar === '"') {
+    return str.replace(/"/g, '\\"');
+  } else {
+    return str.replace(/'/g, "\\'");
+  }
+}
+
+function isEscaped(pos: number, str: string): boolean {
+  let count = 0;
+  for (let i = pos - 1; i >= 0; i--) {
+    if (str[i] === '\\') {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return count % 2 === 1;
+}
+
+function convertSingleToDoubleQuotes(str: string): string {
+  let result = '';
+  let i = 0;
+  
+  while (i < str.length) {
+    if (str[i] === "'") {
+      let end = i + 1;
+      let hasContent = false;
+      
+      while (end < str.length) {
+        if (str[end] === "'" && !isEscaped(end, str)) {
+          hasContent = true;
+          break;
+        }
+        end++;
+      }
+      
+      if (hasContent) {
+        const content = str.substring(i + 1, end);
+        const escapedContent = escapeString(content, '"');
+        result += '"' + escapedContent + '"';
+        i = end + 1;
+        continue;
+      }
+    }
+    
+    if (str[i] === '"') {
+      let end = i + 1;
+      let hasContent = false;
+      
+      while (end < str.length) {
+        if (str[end] === '"' && !isEscaped(end, str)) {
+          hasContent = true;
+          break;
+        }
+        end++;
+      }
+      
+      if (hasContent) {
+        const content = str.substring(i + 1, end);
+        const convertedContent = content.replace(/'/g, '"');
+        const escapedContent = escapeString(convertedContent, '"');
+        result += '"' + escapedContent + '"';
+        i = end + 1;
+        continue;
+      }
+    }
+    
+    result += str[i];
+    i++;
+  }
+  
+  return result;
+}
+
+export function normalizeAndFormatJSON(value: unknown): string {
+  if (value === null || value === undefined) return "";
+
+  const strValue = String(value);
+
+  try {
+    const parsed = JSON.parse(strValue);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    const normalized = convertSingleToDoubleQuotes(strValue);
+    try {
+      const parsed = JSON.parse(normalized);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return strValue;
+    }
+  }
+}

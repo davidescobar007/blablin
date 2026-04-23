@@ -62,21 +62,51 @@ export function FilterRow({ column, filter, onFilterChange, relationOptions }: F
     const relationOpts = column.type === "relation" ? relationOptions?.[column.collectionId || ""] : undefined;
 
     if (isSelectOrRelation) {
-      const selectOptions = options || relationOpts?.map((opt) => String(opt.id)) || [];
-      return (
-        <select
-          value={String(localValue)}
-          onChange={(e) => handleValueChange(e.target.value)}
-          className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Select value...</option>
-          {selectOptions.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
-      );
+      if (column.type === "relation" && relationOpts) {
+        const getPresentableValue = (opt: { id: string; [key: string]: unknown }): string => {
+          const presentableFields = ['name', 'title', 'label', 'username', 'email', 'displayName', 'fullName'];
+
+          for (const field of presentableFields) {
+            if (field in opt && opt[field]) {
+              return String(opt[field]);
+            }
+          }
+
+          return String(opt.id);
+        };
+
+        return (
+          <select
+            value={String(localValue)}
+            onChange={(e) => handleValueChange(e.target.value)}
+            className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select value...</option>
+            {relationOpts.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {getPresentableValue(opt)}
+              </option>
+            ))}
+          </select>
+        );
+      }
+
+      if (column.type === "select" && options) {
+        return (
+          <select
+            value={String(localValue)}
+            onChange={(e) => handleValueChange(e.target.value)}
+            className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select value...</option>
+            {options.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        );
+      }
     }
 
     if (column.type === "number") {

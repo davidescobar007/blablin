@@ -155,7 +155,17 @@ export function applyRelationFilter(
   operator: FilterOperator,
   filterValue: unknown,
 ): boolean {
-  return applySelectFilter(value, operator, filterValue);
+  const strValue = String(value || "");
+  const strFilter = String(filterValue || "");
+
+  switch (operator) {
+    case FilterOperator.EQUALS:
+      return strValue === strFilter;
+    case FilterOperator.NOT_EQUALS:
+      return strValue !== strFilter;
+    default:
+      return false;
+  }
 }
 
 export function applyColumnFilter(
@@ -180,7 +190,11 @@ export function applyColumnFilter(
     return applyDateFilter(value, operator, filterValue, filterValueTo);
   }
 
-  if (columnType === "select" || columnType === "relation") {
+  if (columnType === "select") {
+    return applySelectFilter(value, operator, filterValue);
+  }
+
+  if (columnType === "relation") {
     return applyRelationFilter(value, operator, filterValue);
   }
 

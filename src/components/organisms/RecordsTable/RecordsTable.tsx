@@ -14,6 +14,8 @@ import { AddRecordsDialog } from "../../records-table/AddRecordsDialog";
 import { AIBulkDialog } from "../../records-table/AIBulkDialog";
 import { ColumnDrawer } from "../../records-table/ColumnDrawer";
 import { PreviewPanel } from "../../records-table/PreviewPanel";
+import { ImportJsonDialog } from "../../records-table/ImportJsonDialog";
+import { ImportResultNotification } from "../../records-table/ImportResultNotification";
 import { useTableSelection } from "../../records-table/hooks/useTableSelection";
 import { useColumnVisibility } from "../../records-table/hooks/useColumnVisibility";
 import { useAIGeneration } from "../../records-table/hooks/useAIGeneration";
@@ -37,6 +39,7 @@ export function RecordsTable() {
     saveResult,
     saveAllChanges,
     clearSaveResult,
+    refreshRecords,
     client,
     getAIConfig,
     setAIConfig,
@@ -47,7 +50,6 @@ export function RecordsTable() {
     Record<string, { id: string; [key: string]: unknown }[]>
   >({});
   const [expandedCells, setExpandedCells] = useState<Record<string, boolean>>({});
-  const [previewMode, setPreviewMode] = useState<Record<string, boolean>>({});
   // Track loading collections using a ref for immediate atomic access
   const loadingCollectionsRef = useRef<Set<string>>(new Set());
   const [selectedCell, setSelectedCell] = useState<{
@@ -61,6 +63,12 @@ export function RecordsTable() {
   const [showAIColumnConfig, setShowAIColumnConfig] = useState(false);
   const [configuringColumn, setConfiguringColumn] = useState<string | null>(null);
   const [aiConfig, setAiConfig] = useState<AIColumnConfig | null>(null);
+  const [showImportJsonDialog, setShowImportJsonDialog] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    success: number;
+    failed: number;
+    errors: Array<{ index: number; record: unknown; error: string }>;
+  } | null>(null);
 
   const {
     visibleColumnKeys,
@@ -225,6 +233,62 @@ export function RecordsTable() {
     setShowAIBulkDialog(true);
   }, [selectedRows]);
 
+  const handleShowImportJsonDialog = useCallback(() => {
+    setShowImportJsonDialog(true);
+    setImportResult(null);
+  }, []);
+
+  const handleImportJson = useCallback(async (jsonData: unknown[]) => {
+    if (!client || !selectedCollection) {
+      throw new Error("Not connected to PocketBase or no collection selected");
+    }
+
+    const errors: Array<{ index: number; record: unknown; error: string }> = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    console.log(`[Import] Starting import of ${jsonData.length} records into collection "${selectedCollection.name}"`);
+
+    for (let i = 0; i < jsonData.length; i++) {
+      const record = jsonData[i];
+      
+      try {
+        await client.collection(selectedCollection.name).create(record as Record<string, unknown>);
+        successCount++;
+        console.log(`[Import] Record #${i + 1} created successfully`);
+      } catch (error) {
+        failedCount++;
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.error(`[Import] Record #${i + 1} failed:`, errorMessage);
+        errors.push({
+          index: i + 1,
+          record,
+          error: errorMessage,
+        });
+      }
+
+      if ((i + 1) % 10 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+
+    const result = {
+      success: successCount,
+      failed: failedCount,
+      errors,
+    };
+
+    console.log(`[Import] Import completed: ${successCount} successful, ${failedCount} failed`);
+
+    setImportResult(result);
+
+    console.log("[Import] Refreshing records...");
+    await refreshRecords();
+    console.log("[Import] Refresh completed");
+
+    return result;
+  }, [client, selectedCollection, refreshRecords]);
+
   const handleBulkGenerateAI = useCallback(async (columnNames?: string[]) => {
     if (!columnNames || columnNames.length === 0) {
       if (selectedRows.length === 0) return;
@@ -352,158 +416,149 @@ export function RecordsTable() {
     }
   }, [selectedCollection, configuringColumn, setAIConfig]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        <span className="ml-3 text-slate-600">Loading records...</span>
-      </div>
-    );
-  }
+   return (
+    <>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <span className="ml-3 text-slate-600">Loading records...</span>
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-12">
+          <AlertCircle className="w-8 h-8 text-red-500" />
+          <span className="ml-3 text-red-600">{error}</span>
+        </div>
+      ) : trackedRecords.length === 0 ? (
+        <div className="text-center py-12">
+          <Table className="w-12 h-12 mx-auto text-slate-400 mb-4" />
+          <p className="text-slate-600 mb-4">No records in this collection</p>
+          <button
+            onClick={() => setShowAddDialog(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Add Records
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <RecordsTableActions
+            hasChanges={hasChanges}
+            isSaving={isSaving}
+            selectedRowsCount={selectedRows.length}
+            showColumnSelector={showColumnSelector}
+            onAddRecords={handleAddRows}
+            onDiscardChanges={handleDiscardChanges}
+            onSaveChanges={handleSaveChanges}
+            onToggleColumnSelector={() => setShowColumnSelector(!showColumnSelector)}
+            onShowAISettings={() => setShowAISettings(true)}
+            onShowAIBulkDialog={handleShowAIBulkDialog}
+            onShowImportJsonDialog={handleShowImportJsonDialog}
+            onShowFilters={() => setShowFilterDrawer(true)}
+            activeFilterCount={activeFilterCount}
+            hasActiveFilters={hasActiveFilters}
+          />
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <AlertCircle className="w-8 h-8 text-red-500" />
-        <span className="ml-3 text-red-600">{error}</span>
-      </div>
-    );
-  }
+          {saveResult && (
+            <SaveNotification
+              success={saveResult.success}
+              failed={saveResult.failed}
+              onDismiss={clearSaveResult}
+            />
+          )}
 
-  if (trackedRecords.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <Table className="w-12 h-12 mx-auto text-slate-400 mb-4" />
-        <p className="text-slate-600 mb-4">No records in this collection</p>
-        <button
-          onClick={() => setShowAddDialog(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Add Records
-        </button>
-      </div>
-    );
-  }
+          <AIStatusIndicator generatingCells={aiGenerating} />
 
-  return (
-    <div className="space-y-4">
-      <RecordsTableActions
-        hasChanges={hasChanges}
-        isSaving={isSaving}
-        selectedRowsCount={selectedRows.length}
-        showColumnSelector={showColumnSelector}
-        onAddRecords={handleAddRows}
-        onDiscardChanges={handleDiscardChanges}
-        onSaveChanges={handleSaveChanges}
-        onToggleColumnSelector={() => setShowColumnSelector(!showColumnSelector)}
-        onShowAISettings={() => setShowAISettings(true)}
-        onShowAIBulkDialog={handleShowAIBulkDialog}
-        onShowFilters={() => setShowFilterDrawer(true)}
-        activeFilterCount={activeFilterCount}
-        hasActiveFilters={hasActiveFilters}
-      />
+          <div className="flex gap-4">
+            <div className="flex-1 border border-slate-200 rounded-lg overflow-hidden relative">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    {table.getHeaderGroups().map((headerGroup: any) => (
+                      <tr key={headerGroup.id}>
+                        {headerGroup.headers.map((header: any) => {
+                          const headerClassName = header.column.columnDef.meta?.headerClassName || "px-4 py-3";
+                          const isSelectColumn = header.column.id === "select";
 
-      {saveResult && (
-        <SaveNotification
-          success={saveResult.success}
-          failed={saveResult.failed}
-          onDismiss={clearSaveResult}
-        />
-      )}
-
-      <AIStatusIndicator generatingCells={aiGenerating} />
-
-      <div className="flex gap-4">
-        <div className="flex-1 border border-slate-200 rounded-lg overflow-hidden relative">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                {table.getHeaderGroups().map((headerGroup: any) => (
-                  <tr key={headerGroup.id}>
-                    {headerGroup.headers.map((header: any) => {
-                      const headerClassName = header.column.columnDef.meta?.headerClassName || "px-4 py-3";
-                      const isSelectColumn = header.column.id === "select";
-
-                      return (
-                        <th
-                          key={header.id}
-                          className={`${headerClassName} text-left text-xs font-semibold text-slate-500 uppercase tracking-wider relative`}
-                          style={{ width: header.getSize() }}
-                        >
-                          {isSelectColumn ? (
-                            <div className="flex items-center justify-center w-full h-full">
-                              {flexRender(
-                                header.column.columnDef.header,
-                                header.getContext(),
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1 flex items-center gap-2">
-                                {header.isPlaceholder
-                                  ? null
-                                  : flexRender(
-                                      header.column.columnDef.header,
-                                      header.getContext(),
-                                    )}
-                                 {!header.isPlaceholder &&
-                                  header.column.id !== "state" && (
-                                    <button
-                                      onClick={() => handleShowAIColumnConfig(header.column.id)}
-                                      className="ml-1 p-1 rounded hover:bg-purple-100 text-slate-400 hover:text-purple-600 transition-colors"
-                                      title="Configure AI for this column"
-                                    >
-                                      <Wand2 className="w-3 h-3" />
-                                    </button>
+                          return (
+                            <th
+                              key={header.id}
+                              className={`${headerClassName} text-left text-xs font-semibold text-slate-500 uppercase tracking-wider relative`}
+                              style={{ width: header.getSize() }}
+                            >
+                              {isSelectColumn ? (
+                                <div className="flex items-center justify-center w-full h-full">
+                                  {flexRender(
+                                    header.column.columnDef.header,
+                                    header.getContext(),
                                   )}
-                              </div>
-                              {header.column.getCanResize() && (
-                                <div
-                                  {...{
-                                    onMouseDown: header.getResizeHandler(),
-                                    onTouchStart: header.getResizeHandler(),
-                                    className: `absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 transition-colors ${
-                                      header.column.getIsResizing()
-                                        ? "bg-blue-500"
-                                        : ""
-                                    }`,
-                                  }}
-                                >
-                                  <div className="w-0.5 h-full bg-slate-300" />
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1 flex items-center gap-2">
+                                    {header.isPlaceholder
+                                      ? null
+                                      : flexRender(
+                                          header.column.columnDef.header,
+                                          header.getContext(),
+                                        )}
+                                   {!header.isPlaceholder &&
+                                     header.column.id !== "state" && (
+                                       <button
+                                         onClick={() => handleShowAIColumnConfig(header.column.id)}
+                                         className="ml-1 p-1 rounded hover:bg-purple-100 text-slate-400 hover:text-purple-600 transition-colors"
+                                         title="Configure AI for this column"
+                                       >
+                                         <Wand2 className="w-3 h-3" />
+                                       </button>
+                                     )}
+                                  </div>
+                                  {header.column.getCanResize() && (
+                                    <div
+                                      {...{
+                                        onMouseDown: header.getResizeHandler(),
+                                        onTouchStart: header.getResizeHandler(),
+                                        className: `absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 transition-colors ${
+                                          header.column.getIsResizing()
+                                            ? "bg-blue-500"
+                                            : ""
+                                        }`,
+                                      }}
+                                    >
+                                      <div className="w-0.5 h-full bg-slate-300" />
+                                    </div>
+                                  )}
                                 </div>
                               )}
-                            </div>
-                          )}
-                        </th>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </thead>
-              <RecordsTableBody
-                table={table}
-                displayColumns={displayColumns}
-                updateCell={updateCell}
-                client={client}
-                relationOptions={relationOptions}
-                loadRelationOptions={loadRelationOptions}
-                onCellFocus={handleCellFocus}
-                onGenerateAI={handleGenerateAI}
-                aiGenerating={aiGenerating}
-                expandedCells={expandedCells}
-                setExpandedCells={setExpandedCells}
-                previewMode={previewMode}
-                setPreviewMode={setPreviewMode}
-              />
-            </table>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </thead>
+                  <RecordsTableBody
+                    table={table}
+                    displayColumns={displayColumns}
+                    updateCell={updateCell}
+                    client={client}
+                    relationOptions={relationOptions}
+                    loadRelationOptions={loadRelationOptions}
+                    onCellFocus={handleCellFocus}
+                    onGenerateAI={handleGenerateAI}
+                    aiGenerating={aiGenerating}
+                    expandedCells={expandedCells}
+                    setExpandedCells={setExpandedCells}
+                  />
+                </table>
+              </div>
+            </div>
+
+            <PreviewPanel
+              selectedCell={selectedCell}
+              onClose={() => setSelectedCell(null)}
+            />
           </div>
         </div>
-
-        <PreviewPanel
-          selectedCell={selectedCell}
-          onClose={() => setSelectedCell(null)}
-        />
-      </div>
+      )}
 
       <AddRecordsDialog
         isOpen={showAddDialog}
@@ -556,6 +611,23 @@ export function RecordsTable() {
         displayColumns={displayColumns}
         relationOptions={relationOptions}
       />
-    </div>
+
+      <ImportJsonDialog
+        isOpen={showImportJsonDialog}
+        onClose={() => setShowImportJsonDialog(false)}
+        collectionName={selectedCollection?.name || ""}
+        collectionSchema={selectedCollection?.schema || []}
+        onImport={handleImportJson}
+      />
+
+      {importResult && (
+        <ImportResultNotification
+          success={importResult.success}
+          failed={importResult.failed}
+          onViewErrors={importResult.failed > 0 ? () => setShowImportJsonDialog(true) : undefined}
+          onDismiss={() => setImportResult(null)}
+        />
+      )}
+    </>
   );
 }

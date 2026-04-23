@@ -1,4 +1,4 @@
-import { Plus, Trash2, Save, Columns, Settings, Wand2, Filter } from "lucide-react";
+import { Plus, Trash2, Save, Columns, Settings, Wand2, Filter, Upload } from "lucide-react";
 import { Button } from "../../atoms/Button";
 
 export interface TableActionsProps {
@@ -12,6 +12,7 @@ export interface TableActionsProps {
   onToggleColumnSelector: () => void;
   onShowAISettings: () => void;
   onShowAIBulkDialog: () => void;
+  onShowImportJsonDialog?: () => void;
   onShowFilters?: () => void;
   activeFilterCount?: number;
   hasActiveFilters?: boolean;
@@ -28,6 +29,7 @@ export function RecordsTableActions({
   onToggleColumnSelector,
   onShowAISettings,
   onShowAIBulkDialog,
+  onShowImportJsonDialog,
   onShowFilters,
   activeFilterCount = 0,
   hasActiveFilters = false,
@@ -41,6 +43,13 @@ export function RecordsTableActions({
           icon={<Plus className="w-4 h-4" />}
         >
           Add Records
+        </Button>
+        <Button
+          onClick={onShowImportJsonDialog}
+          variant="secondary"
+          icon={<Upload className="w-4 h-4" />}
+        >
+          Import JSON
         </Button>
         {hasChanges && (
           <Button

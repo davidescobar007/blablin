@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, Wand2, FileText, X, Eye, ChevronUp, ChevronDown, EyeOff } from "lucide-react";
+import { Loader2, Wand2, FileText, X, Eye, ChevronUp, ChevronDown, AlertTriangle } from "lucide-react";
 import { usePocketBase } from "../../context/usePocketBase";
 import { ImagePreviewModal } from "../atoms/Modal";
 import type { CellEditorProps } from "./types";
@@ -8,6 +8,7 @@ import {
   formatDateForInput,
   parseDateFromInput,
 } from "./utils";
+import { normalizeAndFormatJSON, isValidJSON } from "../../utils/formatters";
 
 export function CellEditor({
   column,
@@ -20,9 +21,7 @@ export function CellEditor({
   aiGenerating,
   client,
   isExpanded,
-  isPreview,
   onToggleExpand,
-  onTogglePreview,
   onCellFocus,
 }: CellEditorProps) {
   const getInitialValue = () => {
@@ -70,11 +69,19 @@ export function CellEditor({
   const [editValue, setEditValue] = useState<string>(initialEditValue);
   const [error] = useState<string | null>(null);
   const [showImagePreview, setShowImagePreview] = useState(false);
+  const [isJSONValid, setIsJSONValid] = useState<boolean>(true);
 
   // Actualizar editValue cuando el valor externo cambia (ej: cuando la IA genera contenido)
   useEffect(() => {
     setEditValue(initialEditValue);
   }, [initialEditValue]);
+
+  // Actualizar validación de JSON para campos json/editor
+  useEffect(() => {
+    if (column.type === "json" || column.type === "editor") {
+      setIsJSONValid(editValue.trim() === "" || isValidJSON(editValue));
+    }
+  }, [editValue, column.type]);
 
   const { selectedCollection: currentCollection, getAIConfig: getConfig } =
     usePocketBase();
@@ -399,22 +406,39 @@ export function CellEditor({
       const rows = isExpanded
         ? (column.type === "json" ? 10 : 15)
         : (column.type === "json" ? 3 : 5);
+      const showInvalidIndicator = editValue.trim() !== "" && !isJSONValid;
 
       return (
-        <textarea
-          value={editValue as string}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={() => onUpdate(editValue)}
-          onFocus={() => {
-            onCellFocus?.(record.id, column.key, value, column);
-          }}
-          className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-          rows={rows}
-          disabled={column.system}
-          autoComplete="off"
-          data-form-type="other"
-          aria-label={`Edit ${column.name} for record ${record.id}`}
-        />
+        <div className="relative">
+          <textarea
+            value={editValue as string}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={() => {
+              const formattedValue = normalizeAndFormatJSON(editValue);
+              setEditValue(formattedValue);
+              onUpdate(formattedValue);
+            }}
+            onFocus={() => {
+              onCellFocus?.(record.id, column.key, value, column);
+            }}
+            className={`w-full px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 font-mono ${
+              showInvalidIndicator
+                ? "border-red-400 focus:ring-red-500"
+                : "border-slate-300 focus:ring-blue-500"
+            }`}
+            rows={rows}
+            disabled={column.system}
+            autoComplete="off"
+            data-form-type="other"
+            aria-label={`Edit ${column.name} for record ${record.id}`}
+          />
+          {showInvalidIndicator && (
+            <div className="absolute top-1 right-1 flex items-center gap-1 px-2 py-0.5 bg-red-100 rounded text-xs text-red-700 font-medium">
+              <AlertTriangle className="w-3 h-3" />
+              <span>JSON inválido</span>
+            </div>
+          )}
+        </div>
       );
     }
 
@@ -455,17 +479,6 @@ export function CellEditor({
               {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
           ) : null}
-          <button
-            onClick={onTogglePreview}
-            className={`ml-1 p-1 rounded transition-colors ${
-              isPreview
-                ? "bg-blue-50 text-blue-600"
-                : "hover:bg-slate-100 text-slate-600"
-            }`}
-            title={isPreview ? "Hide preview" : "Show preview"}
-          >
-            {isPreview ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-          </button>
           {showAIButton && onGenerateAI && (
             <button
               onClick={(e) => {
