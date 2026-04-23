@@ -118,6 +118,7 @@ export interface PocketBaseContextType {
     collectionName: string,
     columnName: string,
   ) => AIColumnConfig | null;
+  reloadAIConfigs: () => void;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -225,6 +226,20 @@ export function PocketBaseProvider({ children }: { children: ReactNode }) {
     },
     [aiConfigs],
   );
+
+  const reloadAIConfigs = useCallback(() => {
+    const savedConfigs = localStorage.getItem("pocketbase-ai-configs");
+    if (savedConfigs) {
+      try {
+        const parsedConfigs = JSON.parse(savedConfigs);
+        setAIConfigs(parsedConfigs);
+      } catch (error) {
+        console.error("[PocketBase] Failed to reload AI configs:", error);
+      }
+    } else {
+      setAIConfigs({});
+    }
+  }, []);
 
   // Computed property for hasChanges
   const hasChanges = trackedRecords.some(
@@ -809,6 +824,7 @@ export function PocketBaseProvider({ children }: { children: ReactNode }) {
         aiConfigs,
         setAIConfig,
         getAIConfig,
+        reloadAIConfigs,
       }}
     >
       {children}

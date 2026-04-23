@@ -84,4 +84,5 @@ export interface PocketBaseContextType {
     collectionName: string,
     columnName: string,
   ) => AIColumnConfig | null;
+  reloadAIConfigs: () => void;
 }

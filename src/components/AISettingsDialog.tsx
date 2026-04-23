@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { usePocketBase } from "../context/usePocketBase";
-import { X, Save, Sparkles } from "lucide-react";
+import { X, Save, Sparkles, Database } from "lucide-react";
+import { AIConfigImportExport } from "./molecules/AIConfigImportExport";
 
 interface AISettingsDialogProps {
   isOpen: boolean;
@@ -11,7 +12,7 @@ export function AISettingsDialog({
   isOpen,
   onClose,
 }: AISettingsDialogProps) {
-  const { aiApiKey, setAIApiKey } = usePocketBase();
+  const { aiApiKey, setAIApiKey, reloadAIConfigs } = usePocketBase();
   const [inputKey, setInputKey] = useState("");
 
   const handleSave = () => {
@@ -70,6 +71,16 @@ export function AISettingsDialog({
               </span>
             </div>
           )}
+
+          <div className="pt-4 border-t border-slate-200">
+            <div className="flex items-center gap-2 mb-3">
+              <Database className="w-4 h-4 text-slate-500" />
+              <h4 className="text-sm font-medium text-slate-700">
+                AI Column Configurations
+              </h4>
+            </div>
+            <AIConfigImportExport onImportSuccess={reloadAIConfigs} />
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 mt-6">

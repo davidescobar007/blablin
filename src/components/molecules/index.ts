@@ -7,3 +7,5 @@ export { SaveNotification } from "./SaveNotification";
 export type { SaveNotificationProps } from "./SaveNotification";
 export { AIStatusIndicator } from "./AIStatusIndicator";
 export type { AIStatusIndicatorProps } from "./AIStatusIndicator";
+export { AIConfigImportExport } from "./AIConfigImportExport";
+export type { AIConfigImportExportProps } from "./AIConfigImportExport";
