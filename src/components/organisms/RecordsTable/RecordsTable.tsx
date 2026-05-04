@@ -587,7 +587,7 @@ export function RecordsTable() {
           setConfiguringColumn(null);
         }}
         columnName={configuringColumn || ""}
-        collectionSchema={selectedCollection?.schema}
+        collectionSchema={selectedCollection?.schema || selectedCollection?.fields || []}
         config={aiConfig}
         onSave={handleSaveAIConfig}
       />

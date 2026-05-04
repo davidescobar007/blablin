@@ -386,7 +386,7 @@ export function RecordsTable() {
         isOpen={showAIColumnConfig}
         onClose={() => setShowAIColumnConfig(false)}
         columnName={configuringColumn || ""}
-        collectionSchema={selectedCollection?.schema}
+        collectionSchema={selectedCollection?.schema || selectedCollection?.fields || []}
       />
 
       <AIBulkDialog

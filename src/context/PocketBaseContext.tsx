@@ -534,7 +534,7 @@ export function PocketBaseProvider({ children }: { children: ReactNode }) {
     (count: number) => {
       if (!selectedCollection) return;
 
-      const schemaFields = selectedCollection.schema || [];
+      const schemaFields = selectedCollection.schema || selectedCollection.fields || [];
       const newRows: TrackedRecord[] = [];
 
       for (let i = 0; i < count; i++) {

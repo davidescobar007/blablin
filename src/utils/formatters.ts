@@ -9,7 +9,7 @@ export function getDisplayColumns(collection: CollectionModel | null): Column[] 
   ];
 
   const schemaFields: Column[] =
-    collection.schema?.map(
+    (collection.schema || collection.fields || [])?.map(
       (field: {
         name: string;
         type: string;
