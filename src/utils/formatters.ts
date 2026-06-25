@@ -15,10 +15,21 @@ export function getDisplayColumns(collection: CollectionModel | null): Column[] 
         type: string;
         required: boolean;
         options?: any;
+        [key: string]: unknown;
       }) => {
         let collectionId: string | undefined;
-        if (field.type === "relation" && field.options) {
-          collectionId = field.options.collectionId as string | undefined;
+        if (field.type === "relation") {
+          collectionId =
+            (field.options?.collectionId as string | undefined) ||
+            (field.collectionId as string | undefined);
+        }
+
+        const options = { ...(field.options || {}) };
+        if (field.type === "select" && (!options.values || options.values.length === 0)) {
+          const fieldValues = (field as any).values || (field as any).selectValues;
+          if (Array.isArray(fieldValues) && fieldValues.length > 0) {
+            options.values = fieldValues;
+          }
         }
 
         return {
@@ -27,11 +38,11 @@ export function getDisplayColumns(collection: CollectionModel | null): Column[] 
           type: field.type,
           required: field.required,
           system: false,
-          options: field.options || {},
+          options,
           collectionId,
         };
       },
-    ) || [];
+    )?.filter((col: Column) => col.key !== "id") || [];
 
   return [...systemFields, ...schemaFields];
 }

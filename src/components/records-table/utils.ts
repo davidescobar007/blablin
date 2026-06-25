@@ -31,7 +31,7 @@ export function getDisplayColumns(collection: CollectionModel | null): Column[] 
           collectionId,
         };
       },
-    ) || [];
+    )?.filter((col: Column) => col.key !== "id") || [];
 
   return [...systemFields, ...schemaFields];
 }
@@ -45,22 +45,26 @@ export function formatCellValue(value: unknown): string {
 export function formatRelationValue(value: unknown, column: Column, relationOptions?: Record<string, { id: string; [key: string]: unknown }[]>): string {
   if (value === null || value === undefined) return "";
 
-  // If value is already a string (just an ID), try to find the full record
-  if (typeof value === "string" && column.collectionId && relationOptions) {
-    const options = relationOptions[column.collectionId] || [];
-    const fullRecord = options.find(opt => opt.id === value);
-    if (fullRecord) {
-      return getRelationDisplayText(fullRecord, column);
+  const resolveSingle = (v: unknown): string => {
+    if (typeof v === "string" && column.collectionId && relationOptions) {
+      const options = relationOptions[column.collectionId] || [];
+      const fullRecord = options.find(opt => opt.id === v);
+      if (fullRecord) {
+        return getRelationDisplayText(fullRecord, column);
+      }
+      return v;
     }
-    return value;
+    if (typeof v === "object" && v !== null && "id" in v) {
+      return getRelationDisplayText(v as any, column);
+    }
+    return String(v);
+  };
+
+  if (Array.isArray(value)) {
+    return value.map(resolveSingle).join(", ");
   }
 
-  // If value is an object (full relation record)
-  if (typeof value === "object" && value !== null && "id" in value) {
-    return getRelationDisplayText(value as any, column);
-  }
-
-  return String(value);
+  return resolveSingle(value);
 }
 
 function getRelationDisplayText(record: any, column: Column): string {

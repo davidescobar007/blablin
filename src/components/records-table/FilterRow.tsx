@@ -20,9 +20,19 @@ export function FilterRow({ column, filter, onFilterChange, relationOptions }: F
     filter?.operator || getOperatorsForType(column.type)[0],
   );
 
+  const isNoValueOperator = (op: FilterOperator) =>
+    op === FilterOperator.IS_EMPTY || op === FilterOperator.IS_NOT_EMPTY;
+
   const handleValueChange = (value: string) => {
     setLocalValue(value);
-    if (value) {
+    if (isNoValueOperator(localOperator)) {
+      onFilterChange({
+        columnKey: column.key,
+        operator: localOperator,
+        value: null,
+        valueTo: undefined,
+      });
+    } else if (value) {
       onFilterChange({
         columnKey: column.key,
         operator: localOperator,
@@ -46,7 +56,14 @@ export function FilterRow({ column, filter, onFilterChange, relationOptions }: F
 
   const handleOperatorChange = (operator: FilterOperator) => {
     setLocalOperator(operator);
-    if (localValue) {
+    if (isNoValueOperator(operator)) {
+      onFilterChange({
+        columnKey: column.key,
+        operator,
+        value: null,
+        valueTo: undefined,
+      });
+    } else if (localValue) {
       onFilterChange({
         columnKey: column.key,
         operator,
@@ -57,6 +74,14 @@ export function FilterRow({ column, filter, onFilterChange, relationOptions }: F
   };
 
   const renderValueInput = () => {
+    if (isNoValueOperator(localOperator)) {
+      return (
+        <div className="px-2 py-1 text-xs text-slate-400 italic border border-slate-200 rounded bg-slate-50">
+          No value needed
+        </div>
+      );
+    }
+
     const isSelectOrRelation = column.type === "select" || column.type === "relation";
     const options = column.type === "select" ? column.options?.values : undefined;
     const relationOpts = column.type === "relation" ? relationOptions?.[column.collectionId || ""] : undefined;
@@ -216,6 +241,8 @@ function getOperatorLabel(operator: FilterOperator): string {
     [FilterOperator.BETWEEN]: "Between",
     [FilterOperator.IN]: "In",
     [FilterOperator.NOT_IN]: "Not in",
+    [FilterOperator.IS_EMPTY]: "Is empty",
+    [FilterOperator.IS_NOT_EMPTY]: "Is not empty",
   };
   return labels[operator] || operator;
 }

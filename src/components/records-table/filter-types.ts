@@ -14,6 +14,8 @@ export const FilterOperator = {
   BETWEEN: "between",
   IN: "in",
   NOT_IN: "not_in",
+  IS_EMPTY: "is_empty",
+  IS_NOT_EMPTY: "is_not_empty",
 } as const;
 
 export type FilterOperator = typeof FilterOperator[keyof typeof FilterOperator];

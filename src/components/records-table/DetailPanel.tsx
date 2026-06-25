@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, Pencil } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ChevronLeft, ChevronRight, Wand2, Loader2 } from "lucide-react";
+import { usePocketBase } from "../../context/usePocketBase";
 import type { TrackedRecord } from "../../types/pocketbase.types";
 import type { Column } from "./types";
 import {
@@ -9,6 +10,7 @@ import {
   isValidJSON,
   getRowStateIndicator,
 } from "../../utils/formatters";
+import { formatRelationValue } from "./utils";
 
 function highlightJSON(json: string): React.ReactNode {
   const lines = json.split("\n");
@@ -69,6 +71,8 @@ interface DetailPanelProps {
   total?: number;
   initialEditMode?: boolean;
   className?: string;
+  onGenerateAI?: (recordId: string, columnName: string) => void;
+  aiGenerating?: Record<string, boolean>;
 }
 
 function getPresentableValue(
@@ -127,19 +131,33 @@ function formatViewValue(
         </span>
       );
 
-    case "select":
+    case "select": {
+      if (Array.isArray(value)) {
+        return (
+          <div className="flex flex-wrap gap-1">
+            {value.map((v: string) => (
+              <span
+                key={v}
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+              >
+                {v}
+              </span>
+            ))}
+          </div>
+        );
+      }
       return (
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
           {String(value)}
         </span>
       );
+    }
 
     case "relation": {
-      const relationOpts = relationOptions?.[col.collectionId || ""] || [];
-      const related = relationOpts.find((r) => r.id === value);
+      const displayText = formatRelationValue(value, col, relationOptions);
       return (
         <span className="text-sm text-slate-700">
-          {related ? getPresentableValue(related) : String(value)}
+          {displayText || <span className="text-slate-400 italic">Empty</span>}
         </span>
       );
     }
@@ -216,8 +234,11 @@ export function DetailPanel({
   total,
   initialEditMode = false,
   className,
+  onGenerateAI,
+  aiGenerating,
 }: DetailPanelProps) {
-  const [editMode, setEditMode] = useState(initialEditMode);
+  const { selectedCollection: currentCollection, getAIConfig: getConfig } = usePocketBase();
+  const editMode = initialEditMode;
   const [editValues, setEditValues] = useState<Record<string, unknown>>(() => {
     if (!record) return {};
     const values: Record<string, unknown> = {};
@@ -227,6 +248,48 @@ export function DetailPanel({
     return values;
   });
   const [jsonErrors, setJsonErrors] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!record) {
+      setEditValues({});
+      return;
+    }
+    const values: Record<string, unknown> = {};
+    columns.forEach((col) => {
+      values[col.key] = record.data[col.key];
+    });
+    setEditValues(values);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record, columns]);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        onNext?.();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        onPrev?.();
+      }
+    },
+    [onPrev, onNext],
+  );
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
 
   const handleEditValueChange = (key: string, value: unknown) => {
     setEditValues((prev) => ({ ...prev, [key]: value }));
@@ -322,9 +385,43 @@ export function DetailPanel({
 
       case "select": {
         const options = col.options?.values || [];
+        const maxSelect = col.options?.maxSelect;
+        const isMulti = maxSelect !== undefined && maxSelect > 1;
+        const selectedValues = Array.isArray(value)
+          ? value.map(String)
+          : value
+            ? [String(value)]
+            : [];
+
+        if (isMulti) {
+          return (
+            <select
+              multiple
+              value={selectedValues}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions).map(
+                  (o) => o.value,
+                );
+                handleEditValueChange(
+                  col.key,
+                  selected.length > 0 ? selected : null,
+                );
+              }}
+              onBlur={() => handleSaveField(col)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
+            >
+              {options.map((opt: string) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          );
+        }
+
         return (
           <select
-            value={String(value || "")}
+            value={selectedValues[0] || ""}
             onChange={(e) =>
               handleEditValueChange(
                 col.key,
@@ -347,9 +444,43 @@ export function DetailPanel({
       case "relation": {
         const relationOpts =
           relationOptions?.[col.collectionId || ""] || [];
+        const maxSelect = col.options?.maxSelect;
+        const isMulti = maxSelect !== undefined && maxSelect > 1;
+        const selectedIds = Array.isArray(value)
+          ? value.map(String)
+          : value
+            ? [String(value)]
+            : [];
+
+        if (isMulti) {
+          return (
+            <select
+              multiple
+              value={selectedIds}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions).map(
+                  (o) => o.value,
+                );
+                handleEditValueChange(
+                  col.key,
+                  selected.length > 0 ? selected : null,
+                );
+              }}
+              onBlur={() => handleSaveField(col)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
+            >
+              {relationOpts.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {getPresentableValue(opt)}
+                </option>
+              ))}
+            </select>
+          );
+        }
+
         return (
           <select
-            value={String(value || "")}
+            value={selectedIds[0] || ""}
             onChange={(e) =>
               handleEditValueChange(
                 col.key,
@@ -413,6 +544,33 @@ export function DetailPanel({
           />
         );
 
+      case "text":
+      case "email":
+      case "url":
+        return (
+          <textarea
+            value={value === null ? "" : String(value)}
+            onChange={(e) => {
+              handleEditValueChange(col.key, e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = e.target.scrollHeight + "px";
+            }}
+            onBlur={() => handleSaveField(col)}
+            rows={2}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none overflow-hidden"
+            onInput={(e) => {
+              e.currentTarget.style.height = "auto";
+              e.currentTarget.style.height = e.currentTarget.scrollHeight + "px";
+            }}
+            ref={(el) => {
+              if (el) {
+                el.style.height = "auto";
+                el.style.height = el.scrollHeight + "px";
+              }
+            }}
+          />
+        );
+
       case "file":
         return (
           <div className="text-sm text-slate-500 italic">
@@ -450,47 +608,22 @@ export function DetailPanel({
 
   return (
     <div className={className}>
-      <div className="p-4 space-y-4">
-        {(showNavigation || stateIndicator) && (
-          <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
-            {showNavigation ? (
-              <>
-                <button
-                  onClick={onPrev}
-                  disabled={!hasPrev}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Prev
-                </button>
+      {(showNavigation || stateIndicator) && (
+        <div className="sticky top-0 z-10 flex items-center justify-between bg-white border-b border-slate-200 px-4 py-3">
+          {showNavigation ? (
+            <>
+              <button
+                onClick={onPrev}
+                disabled={!hasPrev}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Prev
+              </button>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-slate-700">
-                    Row {position! + 1} of {total}
-                  </span>
-                  {stateIndicator && (
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${stateIndicator.bgClass}`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${stateIndicator.color}`} />
-                      {stateIndicator.label}
-                    </span>
-                  )}
-                </div>
-
-                <button
-                  onClick={onNext}
-                  disabled={!hasNext}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </>
-            ) : (
-              <div className="flex items-center gap-2 w-full justify-between">
-                <span className="text-sm font-medium text-slate-700 truncate">
-                  {record.id}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-700">
+                  Row {position! + 1} of {total}
                 </span>
                 {stateIndicator && (
                   <span
@@ -501,59 +634,109 @@ export function DetailPanel({
                   </span>
                 )}
               </div>
-            )}
-          </div>
-        )}
 
-        <div className="flex items-center justify-end">
-          <button
-            onClick={() => setEditMode(!editMode)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-              editMode
-                ? "bg-blue-100 text-blue-700"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            {editMode ? (
-              <>
-                <Eye className="w-3.5 h-3.5" />
-                View
-              </>
-            ) : (
-              <>
-                <Pencil className="w-3.5 h-3.5" />
-                Edit
-              </>
-            )}
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {columns.map((col) => (
-            <div
-              key={col.key}
-              className="border border-slate-200 rounded-lg overflow-hidden"
-            >
-              <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-slate-700">
-                    {col.name}
-                  </span>
-                  {col.system && (
-                    <span className="text-xs text-slate-400">(system)</span>
-                  )}
-                </div>
-                <span className="text-xs text-slate-400 px-1.5 py-0.5 bg-slate-100 rounded">
-                  {col.type}
+              <button
+                onClick={onNext}
+                disabled={!hasNext}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 w-full justify-between">
+              <span className="text-sm font-medium text-slate-700 truncate">
+                {record.id}
+              </span>
+              {stateIndicator && (
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${stateIndicator.bgClass}`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${stateIndicator.color}`} />
+                  {stateIndicator.label}
                 </span>
-              </div>
-              <div className="px-3 py-2.5">
-                {editMode
-                  ? renderEditField(col)
-                  : formatViewValue(col, record.data[col.key], relationOptions)}
-              </div>
+              )}
             </div>
-          ))}
+          )}
+        </div>
+      )}
+
+      <div className="p-4 space-y-4">
+        <div className="space-y-3">
+          {columns.map((col) => {
+            console.log("[DetailPanel] rendering col:", col.name, "type:", col.type, "editMode:", editMode, "value:", record?.data[col.key]);
+            const showAIButton =
+              !col.system &&
+              (col.type === "text" ||
+                col.type === "editor" ||
+                col.type === "json" ||
+                col.type === "email" ||
+                col.type === "url" ||
+                col.type === "file");
+            const hasAIConfig =
+              onGenerateAI &&
+              currentCollection &&
+              getConfig(currentCollection.name, col.key);
+            const isGenerating = aiGenerating?.[`${record?.id ?? ""}-${col.key}`];
+            return (
+              <div
+                key={col.key}
+                className="border border-slate-200 rounded-lg overflow-hidden"
+              >
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-700">
+                      {col.name}
+                    </span>
+                    {col.system && (
+                      <span className="text-xs text-slate-400">(system)</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {showAIButton && onGenerateAI && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (record) onGenerateAI(record.id, col.key);
+                        }}
+                        disabled={isGenerating || !hasAIConfig}
+                        className={`p-1 rounded transition-colors ${
+                          isGenerating
+                            ? "bg-purple-100 text-purple-600 animate-pulse"
+                            : hasAIConfig
+                              ? "bg-slate-100 hover:bg-purple-100 text-slate-600 hover:text-purple-600"
+                              : "bg-transparent text-slate-300 cursor-not-allowed"
+                        }`}
+                        title={
+                          isGenerating
+                            ? "Generating..."
+                            : hasAIConfig
+                              ? "Generate with AI"
+                              : "Configure AI for this column"
+                        }
+                        aria-label={`Generate AI for ${col.name}`}
+                      >
+                        {isGenerating ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Wand2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
+                    <span className="text-xs text-slate-400 px-1.5 py-0.5 bg-slate-100 rounded">
+                      {col.type}
+                    </span>
+                  </div>
+                </div>
+                <div className="px-3 py-2.5">
+                  {editMode
+                    ? renderEditField(col)
+                    : formatViewValue(col, record.data[col.key], relationOptions)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

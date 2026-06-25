@@ -1,28 +1,30 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { useReactTable, getCoreRowModel, type ColumnDef } from "@tanstack/react-table";
-import { Loader2, AlertCircle, Table, Wand2 } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { Loader2, AlertCircle, Table } from "lucide-react";
 import { usePocketBase } from "../../../context/usePocketBase";
-import type { TrackedRecord, AIColumnConfig } from "../../../types/pocketbase.types";
+import type { TrackedRecord } from "../../../types/pocketbase.types";
 import type { Column } from "../../../types/records.types";
 import { RecordsTableActions } from "./RecordsTableActions";
-import { RecordsTableBody } from "./RecordsTableBody";
 import { SaveNotification } from "../../molecules/SaveNotification";
 import { AIStatusIndicator } from "../../molecules/AIStatusIndicator";
 import { AISettingsDialog } from "../../AISettingsDialog";
-import { AIColumnConfigDialog } from "../../organisms/AIColumnConfig";
+import { AIColumnConfigDialog } from "../../AIColumnConfigDialog";
 import { AddRecordsDialog } from "../../records-table/AddRecordsDialog";
 import { AIBulkDialog } from "../../records-table/AIBulkDialog";
 import { ColumnDrawer } from "../../records-table/ColumnDrawer";
-import { PreviewPanel } from "../../records-table/PreviewPanel";
 import { ImportJsonDialog } from "../../records-table/ImportJsonDialog";
 import { ImportResultNotification } from "../../records-table/ImportResultNotification";
-import { RowNavigatorDrawer } from "../../records-table/RowNavigatorDrawer";
+import { MasterDetailView } from "../../records-table/MasterDetailView";
+import { DetailPanel } from "../../records-table/DetailPanel";
+import { BulkTableView } from "../../records-table/BulkTableView";
+import { BulkActionBar } from "../../records-table/BulkActionBar";
+import type { TableMode } from "../../records-table/ModeSwitcher";
 import { useTableSelection } from "../../records-table/hooks/useTableSelection";
 import { useColumnVisibility } from "../../records-table/hooks/useColumnVisibility";
 import { useAIGeneration } from "../../records-table/hooks/useAIGeneration";
 import { useTableFilters } from "../../records-table/hooks/useTableFilters";
+import { useTableMode } from "../../records-table/hooks/useTableMode";
+import { useViewport } from "../../../hooks/useViewport";
 import { getDisplayColumns } from "../../../utils/formatters";
-import { flexRender } from "@tanstack/react-table";
 import { FilterDrawer } from "../../records-table/FilterDrawer";
 import { generateAIContent, generateAIImage } from "../../../context/useAI";
 
@@ -43,35 +45,28 @@ export function RecordsTable() {
     refreshRecords,
     client,
     getAIConfig,
-    setAIConfig,
     aiApiKey,
   } = usePocketBase();
 
   const [relationOptions, setRelationOptions] = useState<
     Record<string, { id: string; [key: string]: unknown }[]>
   >({});
-  const [expandedCells, setExpandedCells] = useState<Record<string, boolean>>({});
   // Track loading collections using a ref for immediate atomic access
   const loadingCollectionsRef = useRef<Set<string>>(new Set());
-  const [selectedCell, setSelectedCell] = useState<{
-    recordId: string;
-    field: string;
-    value: unknown;
-    column: Column;
-  } | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showAISettings, setShowAISettings] = useState(false);
   const [showAIColumnConfig, setShowAIColumnConfig] = useState(false);
   const [configuringColumn, setConfiguringColumn] = useState<string | null>(null);
-  const [aiConfig, setAiConfig] = useState<AIColumnConfig | null>(null);
   const [showImportJsonDialog, setShowImportJsonDialog] = useState(false);
   const [importResult, setImportResult] = useState<{
     success: number;
     failed: number;
     errors: Array<{ index: number; record: unknown; error: string }>;
   } | null>(null);
-  const [showRowNavigator, setShowRowNavigator] = useState(false);
-  const [currentRowIndex, setCurrentRowIndex] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const { mode, setMode } = useTableMode();
+  const viewport = useViewport();
 
   const {
     visibleColumnKeys,
@@ -108,7 +103,11 @@ export function RecordsTable() {
   );
 
   const loadRelationOptions = useCallback(async (collectionId: string) => {
-    if (relationOptions[collectionId]) return;
+    console.log("[loadRelationOptions] called with collectionId:", collectionId);
+    if (relationOptions[collectionId]) {
+      console.log("[loadRelationOptions] already loaded, skipping");
+      return;
+    }
 
     // Check ref atomically - if already loading, return immediately
     if (loadingCollectionsRef.current.has(collectionId)) {
@@ -135,75 +134,6 @@ export function RecordsTable() {
     }
   }, [relationOptions, client]);
 
-  const columnDefinitions = useMemo<ColumnDef<TrackedRecord>[]>(
-    () => [
-      {
-        id: "select",
-        accessorKey: "__select__",
-        size: 24,
-        minSize: 24,
-        maxSize: 24,
-        header: () => {
-          const allSelected =
-            selectedRows.length > 0 &&
-            selectedRows.length === filteredRecords.length;
-          return (
-            <div className="flex items-center justify-center w-full h-full">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={handleSelectAll}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-3 h-3 flex-shrink-0"
-                autoComplete="off"
-                data-form-type="other"
-                aria-label="Select all rows"
-              />
-            </div>
-          );
-        },
-        cell: ({ row }: { row: { original: { id: string } } }) => {
-          const isChecked = selectedRows.includes(row.original.id);
-          return (
-            <div className="flex items-center justify-center w-full h-full">
-              <input
-                type="checkbox"
-                checked={isChecked}
-                onChange={(e) => handleRowSelect(row.original.id, e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-3 h-3 flex-shrink-0"
-                autoComplete="off"
-                data-form-type="other"
-                aria-label={`Select row ${row.original.id}`}
-              />
-            </div>
-          );
-        },
-        meta: {
-          cellClassName: "px-1 py-2",
-          headerClassName: "px-1 py-3",
-        },
-      },
-      ...displayColumns.map((column) => ({
-        id: column.key,
-        accessorKey: `data.${column.key}`,
-        header: column.name,
-        size: 150,
-        meta: {
-          cellClassName: "px-4 py-2",
-          headerClassName: "px-4 py-3",
-        },
-      })),
-    ],
-    [selectedRows, trackedRecords.length, handleSelectAll, handleRowSelect, displayColumns],
-  );
-
-  const table = useReactTable({
-    data: filteredRecords,
-    columns: columnDefinitions,
-    getCoreRowModel: getCoreRowModel(),
-    enableColumnResizing: true,
-    columnResizeMode: "onChange",
-  });
-
   const handleAddRows = useCallback(() => {
     addNewRows(1);
     setShowAddDialog(false);
@@ -215,12 +145,35 @@ export function RecordsTable() {
 
   const handleDiscardChanges = useCallback(() => {
     discardChanges();
-    setExpandedCells({});
   }, [discardChanges]);
 
-  const handleCellFocus = useCallback((recordId: string, field: string, value: unknown, column: Column) => {
-    setSelectedCell({ recordId, field, value, column });
-  }, []);
+  const handleSelectAllBool = useCallback(
+    (checked: boolean) => {
+      handleSelectAll({ target: { checked } } as React.ChangeEvent<HTMLInputElement>);
+    },
+    [handleSelectAll],
+  );
+
+  // Auto-load relation options when the visible columns include relation fields
+  useEffect(() => {
+    const cols = displayColumns.filter(
+      (c) => c.type === "relation" && c.collectionId,
+    );
+    cols.forEach((col) => {
+      if (col.collectionId) void loadRelationOptions(col.collectionId);
+    });
+  }, [displayColumns, loadRelationOptions]);
+
+  // Reset selected index when the collection changes
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [selectedCollection?.id]);
+
+  // Clamp the selected index to the available records
+  const safeIndex = Math.min(
+    selectedIndex,
+    Math.max(0, filteredRecords.length - 1),
+  );
 
   useEffect(() => {
     if (saveResult) {
@@ -239,11 +192,6 @@ export function RecordsTable() {
   const handleShowImportJsonDialog = useCallback(() => {
     setShowImportJsonDialog(true);
     setImportResult(null);
-  }, []);
-
-  const handleShowRowNavigator = useCallback(() => {
-    setShowRowNavigator((prev) => !prev);
-    setCurrentRowIndex(0);
   }, []);
 
   const handleImportJson = useCallback(async (jsonData: unknown[]) => {
@@ -410,19 +358,9 @@ export function RecordsTable() {
   }, [aiApiKey, selectedCollection, getAIConfig, trackedRecords, selectedRows, setShowAIBulkDialog, updateCell]);
 
   const handleShowAIColumnConfig = useCallback((columnName: string) => {
-    if (selectedCollection) {
-      const config = getAIConfig(selectedCollection.name, columnName);
-      setConfiguringColumn(columnName);
-      setAiConfig(config);
-      setShowAIColumnConfig(true);
-    }
-  }, [selectedCollection, getAIConfig, setShowAIColumnConfig]);
-
-  const handleSaveAIConfig = useCallback((config: AIColumnConfig | null) => {
-    if (selectedCollection && configuringColumn) {
-      setAIConfig(selectedCollection.name, configuringColumn, config);
-    }
-  }, [selectedCollection, configuringColumn, setAIConfig]);
+    setConfiguringColumn(columnName);
+    setShowAIColumnConfig(true);
+  }, []);
 
    return (
     <>
@@ -461,10 +399,14 @@ export function RecordsTable() {
             onShowAISettings={() => setShowAISettings(true)}
             onShowAIBulkDialog={handleShowAIBulkDialog}
             onShowImportJsonDialog={handleShowImportJsonDialog}
-            onShowRowNavigator={handleShowRowNavigator}
             onShowFilters={() => setShowFilterDrawer(true)}
             activeFilterCount={activeFilterCount}
             hasActiveFilters={hasActiveFilters}
+            mode={mode}
+            onModeChange={setMode}
+            hideBulk={viewport.isMobile}
+            displayColumns={displayColumns}
+            onConfigureAIColumn={handleShowAIColumnConfig}
           />
 
           {saveResult && (
@@ -477,95 +419,23 @@ export function RecordsTable() {
 
           <AIStatusIndicator generatingCells={aiGenerating} />
 
-          <div className="flex gap-4">
-            <div className="flex-1 border border-slate-200 rounded-lg overflow-hidden relative">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    {table.getHeaderGroups().map((headerGroup: any) => (
-                      <tr key={headerGroup.id}>
-                        {headerGroup.headers.map((header: any) => {
-                          const headerClassName = header.column.columnDef.meta?.headerClassName || "px-4 py-3";
-                          const isSelectColumn = header.column.id === "select";
-
-                          return (
-                            <th
-                              key={header.id}
-                              className={`${headerClassName} text-left text-xs font-semibold text-slate-500 uppercase tracking-wider relative`}
-                              style={{ width: header.getSize() }}
-                            >
-                              {isSelectColumn ? (
-                                <div className="flex items-center justify-center w-full h-full">
-                                  {flexRender(
-                                    header.column.columnDef.header,
-                                    header.getContext(),
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1 flex items-center gap-2">
-                                    {header.isPlaceholder
-                                      ? null
-                                      : flexRender(
-                                          header.column.columnDef.header,
-                                          header.getContext(),
-                                        )}
-                                   {!header.isPlaceholder &&
-                                     header.column.id !== "state" && (
-                                       <button
-                                         onClick={() => handleShowAIColumnConfig(header.column.id)}
-                                         className="ml-1 p-1 rounded hover:bg-purple-100 text-slate-400 hover:text-purple-600 transition-colors"
-                                         title="Configure AI for this column"
-                                       >
-                                         <Wand2 className="w-3 h-3" />
-                                       </button>
-                                     )}
-                                  </div>
-                                  {header.column.getCanResize() && (
-                                    <div
-                                      {...{
-                                        onMouseDown: header.getResizeHandler(),
-                                        onTouchStart: header.getResizeHandler(),
-                                        className: `absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 transition-colors ${
-                                          header.column.getIsResizing()
-                                            ? "bg-blue-500"
-                                            : ""
-                                        }`,
-                                      }}
-                                    >
-                                      <div className="w-0.5 h-full bg-slate-300" />
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </thead>
-                  <RecordsTableBody
-                    table={table}
-                    displayColumns={displayColumns}
-                    updateCell={updateCell}
-                    client={client}
-                    relationOptions={relationOptions}
-                    loadRelationOptions={loadRelationOptions}
-                    onCellFocus={handleCellFocus}
-                    onGenerateAI={handleGenerateAI}
-                    aiGenerating={aiGenerating}
-                    expandedCells={expandedCells}
-                    setExpandedCells={setExpandedCells}
-                  />
-                </table>
-              </div>
-            </div>
-
-            <PreviewPanel
-              selectedCell={selectedCell}
-              onClose={() => setSelectedCell(null)}
-            />
-          </div>
+          <RecordsBody
+            mode={viewport.isMobile && mode === "bulk" ? "browse" : mode}
+            filteredRecords={filteredRecords}
+            displayColumns={displayColumns}
+            selectedRows={selectedRows}
+            onToggleRowSelect={handleRowSelect}
+            onSelectAll={handleSelectAllBool}
+            selectedIndex={safeIndex}
+            onSelectIndex={setSelectedIndex}
+            updateCell={updateCell}
+            relationOptions={relationOptions}
+            aiGenerating={aiGenerating}
+            onClearSelection={() => handleSelectAllBool(false)}
+            onShowAIBulkDialog={handleShowAIBulkDialog}
+            bulkGenerating={Object.keys(aiGenerating).length > 0}
+            onGenerateAI={handleGenerateAI}
+          />
         </div>
       )}
 
@@ -588,8 +458,6 @@ export function RecordsTable() {
         }}
         columnName={configuringColumn || ""}
         collectionSchema={selectedCollection?.schema || selectedCollection?.fields || []}
-        config={aiConfig}
-        onSave={handleSaveAIConfig}
       />
 
       <AIBulkDialog
@@ -637,17 +505,110 @@ export function RecordsTable() {
           onDismiss={() => setImportResult(null)}
         />
       )}
+    </>
+  );
+}
 
-      <RowNavigatorDrawer
-        isOpen={showRowNavigator}
-        onClose={() => setShowRowNavigator(false)}
+interface RecordsBodyProps {
+  mode: TableMode;
+  filteredRecords: TrackedRecord[];
+  displayColumns: Column[];
+  selectedRows: string[];
+  onToggleRowSelect: (rowId: string, checked: boolean) => void;
+  onSelectAll: (checked: boolean) => void;
+  selectedIndex: number;
+  onSelectIndex: (index: number) => void;
+  updateCell: (rowId: string, field: string, value: unknown) => void;
+  relationOptions: Record<string, { id: string; [key: string]: unknown }[]>;
+  aiGenerating: Record<string, boolean>;
+  onClearSelection: () => void;
+  onShowAIBulkDialog: () => void;
+  bulkGenerating: boolean;
+  onGenerateAI: (recordId: string, columnName: string) => void;
+}
+
+function RecordsBody({
+  mode,
+  filteredRecords,
+  displayColumns,
+  selectedRows,
+  onToggleRowSelect,
+  onSelectAll,
+  selectedIndex,
+  onSelectIndex,
+  updateCell,
+  relationOptions,
+  aiGenerating,
+  onClearSelection,
+  onShowAIBulkDialog,
+  bulkGenerating,
+  onGenerateAI,
+}: RecordsBodyProps) {
+  const selectedRecord = filteredRecords[selectedIndex] || null;
+
+  if (mode === "bulk") {
+    return (
+      <div className="space-y-3">
+        <BulkTableView
+          records={filteredRecords}
+          columns={displayColumns}
+          selectedRows={selectedRows}
+          onToggleRowSelect={onToggleRowSelect}
+          onSelectAll={onSelectAll}
+          onUpdateCell={updateCell}
+          aiGenerating={aiGenerating}
+        />
+        <BulkActionBar
+          selectedCount={selectedRows.length}
+          totalCount={filteredRecords.length}
+          onClearSelection={onClearSelection}
+          onGenerateAI={onShowAIBulkDialog}
+          isGenerating={bulkGenerating}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <MasterDetailView
         records={filteredRecords}
         columns={displayColumns}
-        currentIndex={currentRowIndex}
-        onIndexChange={setCurrentRowIndex}
-        onUpdateCell={updateCell}
-        relationOptions={relationOptions}
+        selectedIndex={selectedIndex}
+        onSelectIndex={onSelectIndex}
+        selectedRows={selectedRows}
+        onToggleRowSelect={onToggleRowSelect}
+        onSelectAll={onSelectAll}
+        renderDetail={() => (
+          <DetailPanel
+            record={selectedRecord}
+            columns={displayColumns}
+            relationOptions={relationOptions}
+            onUpdateCell={updateCell}
+            onPrev={() => onSelectIndex(Math.max(0, selectedIndex - 1))}
+            onNext={() =>
+              onSelectIndex(
+                Math.min(filteredRecords.length - 1, selectedIndex + 1),
+              )
+            }
+            hasPrev={selectedIndex > 0}
+            hasNext={selectedIndex < filteredRecords.length - 1}
+            position={selectedIndex}
+            total={filteredRecords.length}
+            initialEditMode={mode === "individual"}
+            className="max-h-[calc(100vh-220px)] overflow-y-auto"
+            onGenerateAI={onGenerateAI}
+            aiGenerating={aiGenerating}
+          />
+        )}
       />
-    </>
+      <BulkActionBar
+        selectedCount={selectedRows.length}
+        totalCount={filteredRecords.length}
+        onClearSelection={onClearSelection}
+        onGenerateAI={onShowAIBulkDialog}
+        isGenerating={bulkGenerating}
+      />
+    </div>
   );
 }
