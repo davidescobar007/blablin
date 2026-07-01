@@ -2,7 +2,12 @@ import { useState, useCallback } from "react";
 import type { TrackedRecord } from "../../context/PocketBaseContext";
 import type { Column } from "./types";
 import { CellPopover } from "./CellPopover";
-import { getRowStateColor, formatCellValue, getRowStateIndicator } from "./utils";
+import {
+  getRowStateColor,
+  formatCellValue,
+  formatRelationValue,
+  getRowStateIndicator,
+} from "./utils";
 import { cn } from "../../lib/utils";
 
 interface BulkTableViewProps {
@@ -13,6 +18,7 @@ interface BulkTableViewProps {
   onSelectAll: (checked: boolean) => void;
   onUpdateCell: (rowId: string, field: string, value: unknown) => void;
   aiGenerating?: Record<string, boolean>;
+  relationOptions?: Record<string, { id: string; [key: string]: unknown }[]>;
   className?: string;
 }
 
@@ -31,6 +37,7 @@ export function BulkTableView({
   onSelectAll,
   onUpdateCell,
   aiGenerating,
+  relationOptions,
   className,
 }: BulkTableViewProps) {
   const [popover, setPopover] = useState<PopoverState | null>(null);
@@ -128,7 +135,11 @@ export function BulkTableView({
                   </td>
                   {columns.map((col) => {
                     const rawValue = record.data[col.key];
-                    const isEmpty = rawValue === null || rawValue === undefined || rawValue === "";
+                    const displayValue =
+                      col.type === "relation"
+                        ? formatRelationValue(rawValue, col, relationOptions)
+                        : formatCellValue(rawValue);
+                    const isEmpty = displayValue === "";
                     const isGenerating = aiGenerating?.[`${record.id}-${col.key}`];
                     return (
                       <td
@@ -150,7 +161,7 @@ export function BulkTableView({
                             <span className="text-slate-400 italic text-xs">empty</span>
                           ) : (
                             <span className="text-slate-700">
-                              {truncate(formatCellValue(rawValue), 60)}
+                              {truncate(displayValue, 60)}
                             </span>
                           )}
                         </div>
@@ -171,6 +182,7 @@ export function BulkTableView({
           anchorRect={popover.rect}
           column={popoverColumn}
           value={popover.value}
+          relationOptions={relationOptions}
           onSave={(newValue) => {
             onUpdateCell(popoverRecord.id, popoverColumn.key, newValue);
           }}

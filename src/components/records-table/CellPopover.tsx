@@ -9,12 +9,14 @@ import {
   isValidJSON,
   normalizeAndFormatJSON,
 } from "../../utils/formatters";
+import { getRelationDisplayText } from "./utils";
 
 interface CellPopoverProps {
   open: boolean;
   anchorRect: DOMRect | null;
   column: Column;
   value: unknown;
+  relationOptions?: Record<string, { id: string; [key: string]: unknown }[]>;
   onSave: (value: unknown) => void;
   onClose: () => void;
 }
@@ -24,6 +26,7 @@ export function CellPopover({
   anchorRect,
   column,
   value,
+  relationOptions,
   onSave,
   onClose,
 }: CellPopoverProps) {
@@ -153,6 +156,56 @@ export function CellPopover({
             {options.map((opt: string) => (
               <option key={opt} value={opt}>
                 {opt}
+              </option>
+            ))}
+          </select>
+        );
+      }
+
+      case "relation": {
+        const relationOpts = relationOptions?.[column.collectionId || ""] || [];
+        const maxSelect = column.options?.maxSelect;
+        const isMulti = maxSelect !== undefined && maxSelect > 1;
+        const selectedIds = Array.isArray(draft)
+          ? draft.map(String)
+          : draft
+            ? [String(draft)]
+            : [];
+
+        if (isMulti) {
+          return (
+            <select
+              multiple
+              autoFocus
+              value={selectedIds}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions).map(
+                  (o) => o.value,
+                );
+                setDraft(selected.length > 0 ? selected : null);
+              }}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px]"
+            >
+              {relationOpts.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {getRelationDisplayText(opt, column)}
+                </option>
+              ))}
+            </select>
+          );
+        }
+
+        return (
+          <select
+            autoFocus
+            value={selectedIds[0] || ""}
+            onChange={(e) => setDraft(e.target.value === "" ? null : e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select...</option>
+            {relationOpts.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {getRelationDisplayText(opt, column)}
               </option>
             ))}
           </select>

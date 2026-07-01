@@ -557,6 +557,7 @@ function RecordsBody({
           onSelectAll={onSelectAll}
           onUpdateCell={updateCell}
           aiGenerating={aiGenerating}
+          relationOptions={relationOptions}
         />
         <BulkActionBar
           selectedCount={selectedRows.length}

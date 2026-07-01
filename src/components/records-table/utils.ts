@@ -67,7 +67,7 @@ export function formatRelationValue(value: unknown, column: Column, relationOpti
   return resolveSingle(value);
 }
 
-function getRelationDisplayText(record: any, column: Column): string {
+export function getRelationDisplayText(record: any, column: Column): string {
   if (!record) return '';
 
   // Use displayFields if provided
