@@ -13,6 +13,7 @@ import { AIBulkDialog } from "../../records-table/AIBulkDialog";
 import { ColumnDrawer } from "../../records-table/ColumnDrawer";
 import { ImportJsonDialog } from "../../records-table/ImportJsonDialog";
 import { ExportExcelDialog } from "../../records-table/ExportExcelDialog";
+import { ConfirmDialog } from "../../records-table/ConfirmDialog";
 import { ImportResultNotification } from "../../records-table/ImportResultNotification";
 import { MasterDetailView } from "../../records-table/MasterDetailView";
 import { DetailPanel } from "../../records-table/DetailPanel";
@@ -42,6 +43,7 @@ export function RecordsTable() {
     isSaving,
     saveResult,
     saveAllChanges,
+    deleteRecords,
     clearSaveResult,
     refreshRecords,
     client,
@@ -60,6 +62,8 @@ export function RecordsTable() {
   const [configuringColumn, setConfiguringColumn] = useState<string | null>(null);
   const [showImportJsonDialog, setShowImportJsonDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [importResult, setImportResult] = useState<{
     success: number;
     failed: number;
@@ -155,6 +159,23 @@ export function RecordsTable() {
     },
     [handleSelectAll],
   );
+
+  const handleRequestDelete = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    setPendingDelete(ids);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteRecords(pendingDelete);
+      handleSelectAllBool(false);
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
+    }
+  }, [pendingDelete, deleteRecords, handleSelectAllBool]);
 
   // Auto-load relation options when the visible columns include relation fields
   useEffect(() => {
@@ -438,6 +459,7 @@ export function RecordsTable() {
             onShowAIBulkDialog={handleShowAIBulkDialog}
             bulkGenerating={Object.keys(aiGenerating).length > 0}
             onGenerateAI={handleGenerateAI}
+            onRequestDelete={handleRequestDelete}
           />
         </div>
       )}
@@ -510,6 +532,30 @@ export function RecordsTable() {
         relationOptions={relationOptions}
       />
 
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title="Delete records"
+        danger
+        loading={isDeleting}
+        confirmLabel={
+          pendingDelete && pendingDelete.length
+            ? `Delete (${pendingDelete.length})`
+            : "Delete"
+        }
+        onConfirm={handleConfirmDelete}
+        onClose={() => {
+          if (!isDeleting) setPendingDelete(null);
+        }}
+        message={
+          <>
+            Are you sure you want to delete{" "}
+            <strong>{pendingDelete?.length ?? 0}</strong>{" "}
+            {pendingDelete?.length === 1 ? "record" : "records"}? This action
+            cannot be undone.
+          </>
+        }
+      />
+
       {importResult && (
         <ImportResultNotification
           success={importResult.success}
@@ -538,6 +584,7 @@ interface RecordsBodyProps {
   onShowAIBulkDialog: () => void;
   bulkGenerating: boolean;
   onGenerateAI: (recordId: string, columnName: string) => void;
+  onRequestDelete: (ids: string[]) => void;
 }
 
 function RecordsBody({
@@ -556,6 +603,7 @@ function RecordsBody({
   onShowAIBulkDialog,
   bulkGenerating,
   onGenerateAI,
+  onRequestDelete,
 }: RecordsBodyProps) {
   const selectedRecord = filteredRecords[selectedIndex] || null;
 
@@ -578,6 +626,7 @@ function RecordsBody({
           onClearSelection={onClearSelection}
           onGenerateAI={onShowAIBulkDialog}
           isGenerating={bulkGenerating}
+          onDelete={() => onRequestDelete(selectedRows)}
         />
       </div>
     );
@@ -613,6 +662,11 @@ function RecordsBody({
             className="max-h-[calc(100vh-220px)] overflow-y-auto"
             onGenerateAI={onGenerateAI}
             aiGenerating={aiGenerating}
+            onDelete={
+              selectedRecord
+                ? () => onRequestDelete([selectedRecord.id])
+                : undefined
+            }
           />
         )}
       />
@@ -622,6 +676,7 @@ function RecordsBody({
         onClearSelection={onClearSelection}
         onGenerateAI={onShowAIBulkDialog}
         isGenerating={bulkGenerating}
+        onDelete={() => onRequestDelete(selectedRows)}
       />
     </div>
   );

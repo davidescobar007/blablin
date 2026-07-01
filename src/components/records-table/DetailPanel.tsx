@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Wand2, Loader2, FileText, Music } from "lucide-react";
+import { ChevronLeft, ChevronRight, Wand2, Loader2, FileText, Music, Trash2 } from "lucide-react";
 import type PocketBase from "pocketbase";
 import { ImagePreviewModal } from "../atoms/Modal";
 import { usePocketBase } from "../../context/usePocketBase";
@@ -334,6 +334,7 @@ interface DetailPanelProps {
   className?: string;
   onGenerateAI?: (recordId: string, columnName: string) => void;
   aiGenerating?: Record<string, boolean>;
+  onDelete?: () => void;
 }
 
 function getPresentableValue(
@@ -503,6 +504,7 @@ export function DetailPanel({
   className,
   onGenerateAI,
   aiGenerating,
+  onDelete,
 }: DetailPanelProps) {
   const { selectedCollection: currentCollection, getAIConfig: getConfig, client } = usePocketBase();
   const editMode = initialEditMode;
@@ -875,7 +877,7 @@ export function DetailPanel({
 
   return (
     <div className={className}>
-      {(showNavigation || stateIndicator) && (
+      {(showNavigation || stateIndicator || onDelete) && (
         <div className="sticky top-0 z-10 flex items-center justify-between bg-white border-b border-slate-200 px-4 py-3">
           {showNavigation ? (
             <>
@@ -900,6 +902,16 @@ export function DetailPanel({
                     {stateIndicator.label}
                   </span>
                 )}
+                {onDelete && (
+                  <button
+                    onClick={onDelete}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    title="Delete this record"
+                    aria-label="Delete this record"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               <button
@@ -916,14 +928,26 @@ export function DetailPanel({
               <span className="text-sm font-medium text-slate-700 truncate">
                 {record.id}
               </span>
-              {stateIndicator && (
-                <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${stateIndicator.bgClass}`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${stateIndicator.color}`} />
-                  {stateIndicator.label}
-                </span>
-              )}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {stateIndicator && (
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${stateIndicator.bgClass}`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${stateIndicator.color}`} />
+                    {stateIndicator.label}
+                  </span>
+                )}
+                {onDelete && (
+                  <button
+                    onClick={onDelete}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    title="Delete this record"
+                    aria-label="Delete this record"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
