@@ -9,8 +9,10 @@ import {
   Wand2,
   Filter,
   Upload,
+  FileSpreadsheet,
+  Database,
+  Eye,
   ChevronDown,
-  MoreHorizontal,
 } from "lucide-react";
 import { Button } from "../../atoms/Button";
 import { cn } from "../../../lib/utils";
@@ -29,6 +31,7 @@ export interface TableActionsProps {
   onShowAISettings: () => void;
   onShowAIBulkDialog: () => void;
   onShowImportJsonDialog?: () => void;
+  onShowExport?: () => void;
   onShowFilters?: () => void;
   activeFilterCount?: number;
   hasActiveFilters?: boolean;
@@ -114,13 +117,7 @@ function MenuItem({ icon, label, hint, disabled, onClick }: MenuItemProps) {
   );
 }
 
-function FilterBadge({
-  count,
-  active,
-}: {
-  count: number;
-  active: boolean;
-}) {
+function FilterBadge({ count, active }: { count: number; active: boolean }) {
   if (count <= 0) return null;
   return (
     <span
@@ -134,6 +131,8 @@ function FilterBadge({
   );
 }
 
+const chevronCls = "w-3 h-3 ml-0.5 transition-transform";
+
 export function RecordsTableActions({
   hasChanges,
   isSaving,
@@ -146,6 +145,7 @@ export function RecordsTableActions({
   onShowAISettings,
   onShowAIBulkDialog,
   onShowImportJsonDialog,
+  onShowExport,
   onShowFilters,
   activeFilterCount = 0,
   hasActiveFilters = false,
@@ -165,13 +165,14 @@ export function RecordsTableActions({
       c.type !== "relation",
   );
 
-  const canConfigureAI = Boolean(onConfigureAIColumn) && aiConfigurableColumns.length > 0;
+  const canConfigureAI =
+    Boolean(onConfigureAIColumn) && aiConfigurableColumns.length > 0;
+  const hasDataMenu = Boolean(onShowImportJsonDialog || onShowExport);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      {/* LEFT CLUSTER — data / view / AI */}
+      {/* LEFT CLUSTER — primary action + grouped menus (Data / View / AI) */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Primary: always visible */}
         <Button
           onClick={onAddRecords}
           variant="primary"
@@ -180,70 +181,69 @@ export function RecordsTableActions({
           Add<span className="hidden sm:inline">{" Records"}</span>
         </Button>
 
-        {/* Divider (md+) */}
-        <div className="hidden md:block h-6 w-px bg-slate-200 mx-1" />
+        <div className="hidden sm:block h-6 w-px bg-slate-200 mx-1" />
 
-        {/* Secondary group — inline icons at md, labels at lg */}
-        <div className="hidden md:flex items-center gap-2">
-          {onShowImportJsonDialog && (
-            <Button
-              onClick={onShowImportJsonDialog}
-              variant="secondary"
-              title="Import JSON"
-              icon={<Upload className="w-4 h-4" />}
-            >
-              <span className="hidden lg:inline">Import JSON</span>
-            </Button>
-          )}
-          <Button
-            onClick={onToggleColumnSelector}
-            variant={showColumnSelector ? "primary" : "secondary"}
-            title="Columns"
-            icon={<Columns className="w-4 h-4" />}
+        {/* Data menu — import / export */}
+        {hasDataMenu && (
+          <Dropdown
+            align="left"
+            trigger={(open, toggle) => (
+              <Button
+                onClick={toggle}
+                variant="secondary"
+                title="Data"
+                icon={<Database className="w-4 h-4" />}
+              >
+                <span className="hidden sm:inline">Data</span>
+                <ChevronDown className={cn(chevronCls, open && "rotate-180")} />
+              </Button>
+            )}
           >
-            <span className="hidden lg:inline">Columns</span>
-          </Button>
-          {onShowFilters && (
-            <Button
-              onClick={onShowFilters}
-              variant="secondary"
-              title="Filters"
-              icon={<Filter className="w-4 h-4" />}
-            >
-              <span className="hidden lg:inline">Filters</span>
-              <FilterBadge count={activeFilterCount} active={hasActiveFilters} />
-            </Button>
-          )}
-        </div>
+            {(close) => (
+              <>
+                {onShowImportJsonDialog && (
+                  <MenuItem
+                    icon={<Upload className="w-4 h-4" />}
+                    label="Import JSON"
+                    onClick={() => {
+                      close();
+                      onShowImportJsonDialog();
+                    }}
+                  />
+                )}
+                {onShowExport && (
+                  <MenuItem
+                    icon={<FileSpreadsheet className="w-4 h-4" />}
+                    label="Export to Excel"
+                    onClick={() => {
+                      close();
+                      onShowExport();
+                    }}
+                  />
+                )}
+              </>
+            )}
+          </Dropdown>
+        )}
 
-        {/* Overflow "More" menu — replaces the secondary group below md */}
+        {/* View menu — columns / filters */}
         <Dropdown
-          className="md:hidden"
           align="left"
-          trigger={(_open, toggle) => (
+          trigger={(open, toggle) => (
             <Button
               onClick={toggle}
-              variant="secondary"
-              title="More actions"
-              icon={<MoreHorizontal className="w-4 h-4" />}
+              variant={showColumnSelector ? "primary" : "secondary"}
+              title="View"
+              icon={<Eye className="w-4 h-4" />}
             >
-              <span className="sr-only">More actions</span>
+              <span className="hidden sm:inline">View</span>
               <FilterBadge count={activeFilterCount} active={hasActiveFilters} />
+              <ChevronDown className={cn(chevronCls, open && "rotate-180")} />
             </Button>
           )}
         >
           {(close) => (
             <>
-              {onShowImportJsonDialog && (
-                <MenuItem
-                  icon={<Upload className="w-4 h-4" />}
-                  label="Import JSON"
-                  onClick={() => {
-                    close();
-                    onShowImportJsonDialog();
-                  }}
-                />
-              )}
               <MenuItem
                 icon={<Columns className="w-4 h-4" />}
                 label="Columns"
@@ -267,10 +267,7 @@ export function RecordsTableActions({
           )}
         </Dropdown>
 
-        {/* Divider before AI */}
-        <div className="hidden sm:block h-6 w-px bg-slate-200 mx-1" />
-
-        {/* AI menu — consolidates Settings + Configure column + Generate */}
+        {/* AI menu — settings / generate / configure column */}
         <Dropdown
           align="left"
           trigger={(open, toggle) => (
@@ -282,12 +279,7 @@ export function RecordsTableActions({
               icon={<Sparkles className="w-4 h-4 text-purple-600" />}
             >
               AI
-              <ChevronDown
-                className={cn(
-                  "w-3 h-3 ml-0.5 transition-transform",
-                  open && "rotate-180",
-                )}
-              />
+              <ChevronDown className={cn(chevronCls, open && "rotate-180")} />
             </Button>
           )}
         >

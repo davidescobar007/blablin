@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Wand2, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { ChevronLeft, ChevronRight, Wand2, Loader2, FileText, Music } from "lucide-react";
+import type PocketBase from "pocketbase";
+import { ImagePreviewModal } from "../atoms/Modal";
 import { usePocketBase } from "../../context/usePocketBase";
 import type { TrackedRecord } from "../../types/pocketbase.types";
 import type { Column } from "./types";
@@ -58,6 +60,265 @@ function highlightJSON(json: string): React.ReactNode {
   });
 }
 
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i;
+
+function isImageValue(v: unknown): boolean {
+  if (v instanceof File) return v.type.startsWith("image/");
+  if (typeof v === "string") return IMAGE_EXT.test(v.split("?")[0]);
+  return false;
+}
+
+const AUDIO_EXT = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)$/i;
+
+function isAudioValue(v: unknown): boolean {
+  if (v instanceof File) return v.type.startsWith("audio/");
+  if (typeof v === "string") return AUDIO_EXT.test(v.split("?")[0]);
+  return false;
+}
+
+/**
+ * Renders file field values as image thumbnails (when the file is an image)
+ * or a filename chip otherwise. Existing files are resolved to their
+ * PocketBase URL; unsaved File objects use an object URL.
+ */
+function FilePreview({
+  value,
+  rawRecord,
+  client,
+  recordId,
+  columnKey,
+  onUpdateCell,
+}: {
+  value: unknown;
+  rawRecord: Record<string, unknown>;
+  client: PocketBase | null;
+  recordId?: string;
+  columnKey?: string;
+  onUpdateCell?: (rowId: string, field: string, value: unknown) => void;
+}) {
+  const [preview, setPreview] = useState<{
+    url: string;
+    name: string;
+    file: File | null;
+    index: number;
+  } | null>(null);
+
+  const files = useMemo(
+    () =>
+      (Array.isArray(value) ? value : [value]).filter(
+        (f) => f !== null && f !== undefined && f !== "",
+      ),
+    [value],
+  );
+
+  const objectUrls = useMemo(() => {
+    const map = new Map<File, string>();
+    files.forEach((f) => {
+      if (f instanceof File) map.set(f, URL.createObjectURL(f));
+    });
+    return map;
+  }, [files]);
+
+  useEffect(() => {
+    return () => {
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [objectUrls]);
+
+  const resolvePreview = useCallback(
+    (entry: unknown, index: number) => {
+      if (entry === null || entry === undefined || entry === "") return null;
+      if (!isImageValue(entry)) return null;
+      const isFile = entry instanceof File;
+      const name = isFile
+        ? entry.name
+        : String(entry).split("/").pop() || String(entry);
+      let url: string | null = null;
+      if (isFile) {
+        url = objectUrls.get(entry) || null;
+      } else if (client && rawRecord?.id) {
+        try {
+          url = client.files.getURL(rawRecord, String(entry));
+        } catch {
+          url = null;
+        }
+      }
+      if (!url) return null;
+      return { url, name, file: isFile ? entry : null, index };
+    },
+    [objectUrls, client, rawRecord],
+  );
+
+  const openPreview = (index: number) => {
+    setPreview(resolvePreview(files[index], index));
+  };
+
+  // Follow record navigation (arrow keys / Prev-Next): when the record
+  // changes while the modal is open, re-point it at the same field's image
+  // in the new record, or close it if that record has none. Keyed on the
+  // record id so in-place optimization (which changes the value but not the
+  // record) doesn't reset the modal.
+  useEffect(() => {
+    setPreview((prev) => {
+      if (!prev) return prev;
+      const next = resolvePreview(files[prev.index], prev.index);
+      if (!next) return null;
+      if (next.url === prev.url) return prev;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordId]);
+
+  // Best-effort fetch of an existing stored image into a File so the modal
+  // can offer compression / WebP optimization (view-only if blocked by CORS).
+  useEffect(() => {
+    if (!preview || preview.file || !client) return;
+    const { url, name } = preview;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok || cancelled) return;
+        const blob = await res.blob();
+        const file = new File([blob], name, { type: blob.type });
+        setPreview((prev) =>
+          prev && prev.url === url ? { ...prev, file } : prev,
+        );
+      } catch {
+        // ignore — optimization simply won't be offered
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [preview, client]);
+
+  const applyOptimizedFile = (newFile: File) => {
+    if (!onUpdateCell || !recordId || !columnKey || !preview) return;
+    if (Array.isArray(value)) {
+      const next = value.slice();
+      next[preview.index] = newFile;
+      onUpdateCell(recordId, columnKey, next);
+    } else {
+      onUpdateCell(recordId, columnKey, newFile);
+    }
+    setPreview((prev) => (prev ? { ...prev, file: newFile } : prev));
+  };
+
+  if (files.length === 0) {
+    return <span className="text-slate-400 italic">Empty</span>;
+  }
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {files.map((f, i) => {
+          const isFile = f instanceof File;
+          const name = isFile
+            ? f.name
+            : String(f).split("/").pop() || String(f);
+          const img = isImageValue(f);
+
+          let thumbUrl: string | null = null;
+          let fullUrl: string | null = null;
+          if (isFile) {
+            fullUrl = objectUrls.get(f) || null;
+            thumbUrl = img ? fullUrl : null;
+          } else if (client && rawRecord?.id) {
+            try {
+              fullUrl = client.files.getURL(rawRecord, String(f));
+              thumbUrl = img
+                ? client.files.getURL(rawRecord, String(f), { thumb: "100x100" })
+                : null;
+            } catch {
+              fullUrl = null;
+            }
+          }
+
+          if (img && thumbUrl) {
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => openPreview(i)}
+                title={`${name} — view`}
+                className="block overflow-hidden rounded border border-slate-200 hover:ring-2 hover:ring-blue-400 transition-shadow"
+              >
+                <img
+                  src={thumbUrl}
+                  alt={name}
+                  loading="lazy"
+                  className="h-16 w-16 object-cover"
+                />
+              </button>
+            );
+          }
+
+          if (isAudioValue(f) && fullUrl) {
+            return (
+              <div key={i} className="w-full space-y-1">
+                <div className="flex items-center gap-1 text-xs text-slate-500">
+                  <Music className="w-3 h-3 flex-shrink-0" />
+                  <span className="truncate" title={name}>
+                    {name}
+                  </span>
+                </div>
+                <audio
+                  controls
+                  preload="metadata"
+                  src={fullUrl}
+                  className="w-full h-9"
+                >
+                  Your browser does not support the audio element.
+                </audio>
+              </div>
+            );
+          }
+
+          const chip = (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded text-xs text-slate-600 max-w-[220px]">
+              <FileText className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">{name}</span>
+            </span>
+          );
+          return fullUrl ? (
+            <a
+              key={i}
+              href={fullUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={name}
+            >
+              {chip}
+            </a>
+          ) : (
+            <span key={i}>{chip}</span>
+          );
+        })}
+      </div>
+
+      {preview && (
+        <ImagePreviewModal
+          // Remount per distinct image so no compressed/rotated/zoomed state
+          // from a previously opened image leaks into this one. The URL is
+          // stable across the async File load and re-optimization of the same
+          // image, so those don't trigger an unwanted remount.
+          key={preview.url}
+          isOpen
+          onClose={() => setPreview(null)}
+          imageUrl={preview.url}
+          fileName={preview.name}
+          fileObject={preview.file ?? undefined}
+          fileSize={preview.file?.size}
+          canConvertToWebP
+          onCompress={applyOptimizedFile}
+          onConvertToWebP={applyOptimizedFile}
+        />
+      )}
+    </>
+  );
+}
+
 interface DetailPanelProps {
   record: TrackedRecord | null;
   columns: Column[];
@@ -100,6 +361,12 @@ function formatViewValue(
   col: Column,
   value: unknown,
   relationOptions?: Record<string, { id: string; [key: string]: unknown }[]>,
+  fileCtx?: {
+    rawRecord: Record<string, unknown>;
+    client: PocketBase | null;
+    recordId: string;
+    onUpdateCell: (rowId: string, field: string, value: unknown) => void;
+  },
 ): React.ReactNode {
   if (value === null || value === undefined) {
     return <span className="text-slate-400 italic">Empty</span>;
@@ -163,15 +430,15 @@ function formatViewValue(
     }
 
     case "file": {
-      const files = Array.isArray(value) ? value : [value];
       return (
-        <div className="space-y-1">
-          {files.map((f: string, i: number) => (
-            <span key={i} className="block text-sm text-slate-700 truncate">
-              {String(f)}
-            </span>
-          ))}
-        </div>
+        <FilePreview
+          value={value}
+          rawRecord={fileCtx?.rawRecord ?? {}}
+          client={fileCtx?.client ?? null}
+          recordId={fileCtx?.recordId}
+          columnKey={col.key}
+          onUpdateCell={fileCtx?.onUpdateCell}
+        />
       );
     }
 
@@ -237,7 +504,7 @@ export function DetailPanel({
   onGenerateAI,
   aiGenerating,
 }: DetailPanelProps) {
-  const { selectedCollection: currentCollection, getAIConfig: getConfig } = usePocketBase();
+  const { selectedCollection: currentCollection, getAIConfig: getConfig, client } = usePocketBase();
   const editMode = initialEditMode;
   const [editValues, setEditValues] = useState<Record<string, unknown>>(() => {
     if (!record) return {};
@@ -732,7 +999,12 @@ export function DetailPanel({
                 <div className="px-3 py-2.5">
                   {editMode
                     ? renderEditField(col)
-                    : formatViewValue(col, record.data[col.key], relationOptions)}
+                    : formatViewValue(col, record.data[col.key], relationOptions, {
+                        rawRecord: record.data,
+                        client,
+                        recordId: record.id,
+                        onUpdateCell,
+                      })}
                 </div>
               </div>
             );

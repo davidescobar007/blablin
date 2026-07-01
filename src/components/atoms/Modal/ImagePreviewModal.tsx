@@ -82,6 +82,7 @@ export function ImagePreviewModal({
         fileObject,
         MAX_FILE_SIZE,
         compressionQuality,
+        true, // force: user explicitly asked to compress, even if already small
       );
 
       if (result) {
@@ -217,7 +218,7 @@ export function ImagePreviewModal({
           <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-blue-800">
-                Comprimido:
+                Compressed:
               </span>
               <span className="text-xs text-blue-700">
                 {formattedOriginalSize} → {formattedSize}
@@ -235,7 +236,7 @@ export function ImagePreviewModal({
               <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1 space-y-2">
                 <p className="text-sm font-medium text-green-800">
-                  ¡Imagen comprimida exitosamente!
+                  Image compressed successfully!
                 </p>
                 <div className="flex items-center justify-between text-xs text-green-700">
                   <span>
@@ -248,8 +249,8 @@ export function ImagePreviewModal({
                 </div>
                 {compressionResult.compressedSize > MAX_FILE_SIZE && (
                   <p className="text-xs text-yellow-700">
-                    La imagen aún excede el límite. Intenta con una calidad
-                    menor.
+                    The image still exceeds the limit. Try a lower
+                    quality.
                   </p>
                 )}
               </div>
@@ -276,13 +277,13 @@ export function ImagePreviewModal({
                 <div className="flex-1">
                   <p className="text-sm font-medium">
                     {exceedsLimit
-                      ? "El archivo excede el límite de 500 KB"
-                      : "Optimiza el tamaño de tu imagen"}
+                      ? "The file exceeds the 500 KB limit"
+                      : "Optimize your image size"}
                   </p>
                   <p className="text-xs mt-1">
                     {exceedsLimit
-                      ? "Puedes comprimir la imagen para reducir su tamaño."
-                      : `Actualmente pesa ${formattedSize}. Comprime para ahorrar espacio.`}
+                      ? "You can compress the image to reduce its size."
+                      : `Currently ${formattedSize}. Compress to save space.`}
                   </p>
                 </div>
               </div>
@@ -290,7 +291,7 @@ export function ImagePreviewModal({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-slate-700">
-                    Calidad de compresión
+                    Compression quality
                   </label>
                   <span className="text-sm text-slate-600 font-mono">
                     {Math.round(compressionQuality * 100)}%
@@ -317,14 +318,14 @@ export function ImagePreviewModal({
                   {isCompressing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Comprimiendo...
+                      Compressing...
                     </>
                   ) : (
                     <>
                       <Zap className="w-4 h-4" />
                       {exceedsLimit
-                        ? "Comprimir imagen"
-                        : "Comprimir para optimizar"}
+                        ? "Compress image"
+                        : "Compress to optimize"}
                     </>
                   )}
                 </button>
@@ -343,11 +344,11 @@ export function ImagePreviewModal({
                   <Zap className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-purple-800">
-                      Convertir a WebP
+                      Convert to WebP
                     </p>
                     <p className="text-xs text-purple-700 mt-1">
-                      WebP reduce el tamaño ~25-30% manteniendo la calidad
-                      visual.
+                      WebP reduces size ~25-30% while keeping visual
+                      quality.
                     </p>
                   </div>
                 </div>
@@ -355,7 +356,7 @@ export function ImagePreviewModal({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-medium text-slate-700">
-                      Calidad WebP
+                      WebP quality
                     </label>
                     <span className="text-sm text-slate-600 font-mono">
                       {Math.round(webPConversionQuality * 100)}%
@@ -382,12 +383,12 @@ export function ImagePreviewModal({
                     {isConvertingToWebP ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        Convirtiendo...
+                        Converting...
                       </>
                     ) : (
                       <>
                         <Zap className="w-4 h-4" />
-                        Convertir a WebP (~-30% tamaño)
+                        Convert to WebP (~-30% size)
                       </>
                     )}
                   </button>
@@ -402,7 +403,7 @@ export function ImagePreviewModal({
               <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1 space-y-2">
                 <p className="text-sm font-medium text-green-800">
-                  ¡Convertido a WebP exitosamente!
+                  Converted to WebP successfully!
                 </p>
                 <div className="flex items-center justify-between text-xs text-green-700">
                   <span>
@@ -415,7 +416,7 @@ export function ImagePreviewModal({
                   </span>
                 </div>
                 <div className="text-xs text-green-600">
-                  Formato: <strong>WebP</strong> | Nuevo tamaño:{" "}
+                  Format: <strong>WebP</strong> | New size:{" "}
                   <strong>{formatFileSize(webPConvertedSize)}</strong>
                 </div>
               </div>

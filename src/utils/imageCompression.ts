@@ -17,10 +17,13 @@ export async function compressImageIfNeeded(
   file: File,
   maxSize: number = MAX_FILE_SIZE,
   initialQuality: number = 0.7,
+  force: boolean = false,
 ): Promise<CompressionResult | null> {
   const originalSize = file.size;
 
-  if (originalSize <= maxSize) {
+  // Skip only when the file is already small AND the caller isn't explicitly
+  // forcing a re-compression (e.g. the user clicked "compress" in the modal).
+  if (!force && originalSize <= maxSize) {
     console.log("[Compression] File size is within limit:", formatFileSize(originalSize));
     return null;
   }

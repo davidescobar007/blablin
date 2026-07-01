@@ -171,7 +171,7 @@ export function AIColumnConfigDialog({
               })}
             </select>
             <p className="text-xs text-slate-500 mt-1">
-              Selecciona el modelo. Los modelos experimentales pueden tener mejor rendimiento pero menor estabilidad.
+              Select a model. Experimental models may perform better but are less stable.
             </p>
           </div>
 
@@ -185,11 +185,11 @@ export function AIColumnConfigDialog({
             />
             <label htmlFor="generateImage" className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <ImageIcon className="w-4 h-4" />
-              Generar imagen
+              Generate image
             </label>
           </div>
           <p className="text-xs text-slate-500 -mt-1">
-            Marca esta opción para generar imágenes en lugar de texto (para columnas de tipo file)
+            Check this to generate images instead of text (for file-type columns)
           </p>
 
           {!generateImage && (

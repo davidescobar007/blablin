@@ -72,7 +72,7 @@ export function AIConfigImportExport({ onImportSuccess }: AIConfigImportExportPr
 
         if (!validateImportData(parsed)) {
           setImportError(
-            "Archivo inválido: debe contener una clave 'aiConfigs' con las configuraciones"
+            "Invalid file: it must contain an 'aiConfigs' key with the configurations"
           );
           return;
         }
@@ -89,12 +89,12 @@ export function AIConfigImportExport({ onImportSuccess }: AIConfigImportExportPr
           setImportSuccess(false);
         }, 3000);
       } catch {
-        setImportError("Error al leer el archivo: JSON inválido");
+        setImportError("Failed to read file: invalid JSON");
       }
     };
 
     reader.onerror = () => {
-      setImportError("Error al leer el archivo");
+      setImportError("Failed to read file");
     };
 
     reader.readAsText(file);
@@ -134,14 +134,14 @@ export function AIConfigImportExport({ onImportSuccess }: AIConfigImportExportPr
           className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-sm font-medium"
         >
           <Download className="w-4 h-4" />
-          Exportar configuración
+          Export configuration
         </button>
         <button
           onClick={handleImportClick}
           className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-sm font-medium"
         >
           <Upload className="w-4 h-4" />
-          Importar configuración
+          Import configuration
         </button>
       </div>
 
@@ -150,10 +150,10 @@ export function AIConfigImportExport({ onImportSuccess }: AIConfigImportExportPr
           <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-green-700 font-medium">
-              Configuración importada correctamente
+              Configuration imported successfully
             </p>
             <p className="text-xs text-green-600 mt-0.5">
-              Las configuraciones se han actualizado
+              The configurations have been updated
             </p>
           </div>
           <button
@@ -170,7 +170,7 @@ export function AIConfigImportExport({ onImportSuccess }: AIConfigImportExportPr
           <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-red-700 font-medium">
-              Error al importar
+              Import error
             </p>
             <p className="text-xs text-red-600 mt-0.5">
               {importError}

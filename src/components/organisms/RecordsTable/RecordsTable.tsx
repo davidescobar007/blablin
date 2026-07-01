@@ -12,6 +12,7 @@ import { AddRecordsDialog } from "../../records-table/AddRecordsDialog";
 import { AIBulkDialog } from "../../records-table/AIBulkDialog";
 import { ColumnDrawer } from "../../records-table/ColumnDrawer";
 import { ImportJsonDialog } from "../../records-table/ImportJsonDialog";
+import { ExportExcelDialog } from "../../records-table/ExportExcelDialog";
 import { ImportResultNotification } from "../../records-table/ImportResultNotification";
 import { MasterDetailView } from "../../records-table/MasterDetailView";
 import { DetailPanel } from "../../records-table/DetailPanel";
@@ -58,6 +59,7 @@ export function RecordsTable() {
   const [showAIColumnConfig, setShowAIColumnConfig] = useState(false);
   const [configuringColumn, setConfiguringColumn] = useState<string | null>(null);
   const [showImportJsonDialog, setShowImportJsonDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const [importResult, setImportResult] = useState<{
     success: number;
     failed: number;
@@ -399,6 +401,7 @@ export function RecordsTable() {
             onShowAISettings={() => setShowAISettings(true)}
             onShowAIBulkDialog={handleShowAIBulkDialog}
             onShowImportJsonDialog={handleShowImportJsonDialog}
+            onShowExport={() => setShowExportDialog(true)}
             onShowFilters={() => setShowFilterDrawer(true)}
             activeFilterCount={activeFilterCount}
             hasActiveFilters={hasActiveFilters}
@@ -495,6 +498,16 @@ export function RecordsTable() {
         collectionName={selectedCollection?.name || ""}
         collectionSchema={selectedCollection?.schema || []}
         onImport={handleImportJson}
+      />
+
+      <ExportExcelDialog
+        isOpen={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        columns={displayColumns}
+        records={filteredRecords}
+        selectedRowIds={selectedRows}
+        collectionName={selectedCollection?.name || "export"}
+        relationOptions={relationOptions}
       />
 
       {importResult && (
