@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
+import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import type { TrackedRecord } from "../../context/PocketBaseContext";
 import type { Column } from "./types";
 import { CellPopover } from "./CellPopover";
@@ -41,6 +42,74 @@ export function BulkTableView({
   className,
 }: BulkTableViewProps) {
   const [popover, setPopover] = useState<PopoverState | null>(null);
+  const [sortConfig, setSortConfig] = useState<{
+    key: string;
+    direction: "asc" | "desc";
+  } | null>(null);
+
+  const handleSort = useCallback((key: string) => {
+    // Cycle: unsorted -> asc -> desc -> unsorted
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: "asc" };
+      if (prev.direction === "asc") return { key, direction: "desc" };
+      return null;
+    });
+  }, []);
+
+  const sortedRecords = useMemo(() => {
+    if (!sortConfig) return records;
+    const col = columns.find((c) => c.key === sortConfig.key);
+    if (!col) return records;
+    const dir = sortConfig.direction === "asc" ? 1 : -1;
+
+    const toKey = (
+      record: TrackedRecord,
+    ): { empty: boolean; value: number | string } => {
+      const raw = record.data[col.key];
+      const empty =
+        raw === null ||
+        raw === undefined ||
+        raw === "" ||
+        (Array.isArray(raw) && raw.length === 0);
+      if (empty) return { empty: true, value: "" };
+
+      if (col.type === "number") {
+        const n = Number(raw);
+        return Number.isNaN(n)
+          ? { empty: true, value: "" }
+          : { empty: false, value: n };
+      }
+      if (col.type === "date" || col.type === "datetime") {
+        const t = Date.parse(String(raw));
+        return Number.isNaN(t)
+          ? { empty: true, value: "" }
+          : { empty: false, value: t };
+      }
+      if (col.type === "bool") {
+        return { empty: false, value: raw ? 1 : 0 };
+      }
+      if (col.type === "relation") {
+        return {
+          empty: false,
+          value: formatRelationValue(raw, col, relationOptions).toLowerCase(),
+        };
+      }
+      return { empty: false, value: formatCellValue(raw).toLowerCase() };
+    };
+
+    return [...records].sort((a, b) => {
+      const ka = toKey(a);
+      const kb = toKey(b);
+      // Empty values always sort last, regardless of direction
+      if (ka.empty && kb.empty) return 0;
+      if (ka.empty) return 1;
+      if (kb.empty) return -1;
+      if (typeof ka.value === "number" && typeof kb.value === "number") {
+        return (ka.value - kb.value) * dir;
+      }
+      return String(ka.value).localeCompare(String(kb.value)) * dir;
+    });
+  }, [records, columns, sortConfig, relationOptions]);
 
   const handleCellClick = useCallback(
     (e: React.MouseEvent, record: TrackedRecord, column: Column) => {
@@ -89,23 +158,39 @@ export function BulkTableView({
               <th className="sticky left-10 z-10 bg-slate-50 px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">
                 State
               </th>
-              {columns.map((col) => (
-                <th
-                  key={col.key}
-                  className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap"
-                >
-                  <div className="flex items-center gap-1">
-                    <span>{col.name}</span>
-                    <span className="text-slate-400 font-normal normal-case">
-                      ({col.type})
-                    </span>
-                  </div>
-                </th>
-              ))}
+              {columns.map((col) => {
+                const sorted =
+                  sortConfig?.key === col.key ? sortConfig.direction : null;
+                return (
+                  <th
+                    key={col.key}
+                    className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSort(col.key)}
+                      className="group flex items-center gap-1 uppercase tracking-wider hover:text-slate-700 transition-colors"
+                      title={`Sort by ${col.name}`}
+                    >
+                      <span>{col.name}</span>
+                      <span className="text-slate-400 font-normal normal-case">
+                        ({col.type})
+                      </span>
+                      {sorted === "asc" ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-blue-600" />
+                      ) : sorted === "desc" ? (
+                        <ChevronDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ChevronsUpDown className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-400" />
+                      )}
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {records.map((record) => {
+            {sortedRecords.map((record) => {
               const isSelected = selectedRows.includes(record.id);
               return (
                 <tr
