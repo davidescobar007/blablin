@@ -70,6 +70,7 @@ export interface PocketBaseContextType {
     update: { id: string; data: Record<string, unknown> }[];
   };
   saveAllChanges: () => Promise<{ success: number; failed: number }>;
+  deleteRecords: (ids: string[]) => Promise<{ success: number; failed: number }>;
   clearRowError: (rowId: string) => void;
   clearSaveResult: () => void;
   aiApiKey: string | null;

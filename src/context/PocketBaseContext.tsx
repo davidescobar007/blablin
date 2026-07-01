@@ -104,6 +104,7 @@ export interface PocketBaseContextType {
     update: { id: string; data: Record<string, unknown> }[];
   };
   saveAllChanges: () => Promise<{ success: number; failed: number }>;
+  deleteRecords: (ids: string[]) => Promise<{ success: number; failed: number }>;
   clearRowError: (rowId: string) => void;
   clearSaveResult: () => void;
   aiApiKey: string | null;
@@ -794,6 +795,44 @@ export function PocketBaseProvider({ children }: { children: ReactNode }) {
     trackedRecords,
   ]);
 
+  const deleteRecords = useCallback(
+    async (ids: string[]): Promise<{ success: number; failed: number }> => {
+      if (!client || !selectedCollection) return { success: 0, failed: 0 };
+
+      let success = 0;
+      let failed = 0;
+      const toRemove = new Set<string>();
+
+      for (const id of ids) {
+        const record = trackedRecords.find((r) => r.id === id);
+        if (!record) continue;
+
+        // Unsaved new rows are just dropped locally — no API call.
+        if (record.state === "new") {
+          toRemove.add(id);
+          success++;
+          continue;
+        }
+
+        try {
+          await client.collection(selectedCollection.name).delete(id);
+          toRemove.add(id);
+          success++;
+        } catch (err) {
+          console.error(`[PocketBase] Failed to delete record ${id}:`, err);
+          failed++;
+        }
+      }
+
+      if (toRemove.size > 0) {
+        setTrackedRecords((prev) => prev.filter((r) => !toRemove.has(r.id)));
+      }
+
+      return { success, failed };
+    },
+    [client, selectedCollection, trackedRecords],
+  );
+
   return (
     <PocketBaseContext.Provider
       value={{
@@ -817,6 +856,7 @@ export function PocketBaseProvider({ children }: { children: ReactNode }) {
         discardChanges,
         getRecordsForSave,
         saveAllChanges,
+        deleteRecords,
         clearRowError,
         clearSaveResult,
         aiApiKey,
