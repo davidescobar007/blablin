@@ -201,7 +201,17 @@ function truncate(s: string, n: number): string {
 function RowStateBadge({ record }: { record: TrackedRecord }) {
   const indicator = getRowStateIndicator(record.state, !!record.error);
   if (!indicator) {
-    return <span className="text-xs text-slate-400 font-mono truncate block">{record.id.slice(0, 6)}</span>;
+    // Row has no pending change — show a neutral marker instead of the ID
+    // (the ID column already shows the record identifier).
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-xs text-slate-400"
+        title="No pending changes"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+        {record.state === "saved" ? "Saved" : "—"}
+      </span>
+    );
   }
   return (
     <span
