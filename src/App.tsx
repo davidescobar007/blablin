@@ -25,7 +25,9 @@ function AppContent() {
           <ConnectionForm />
         ) : (
           <div className="space-y-4">
-            <CollectionSelector />
+            <div className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur-sm -mx-8 px-8 py-3 border-b border-slate-200">
+              <CollectionSelector />
+            </div>
             <RecordsTable />
           </div>
         )}

@@ -9,6 +9,7 @@ export interface DrawerProps {
   children: ReactNode;
   position?: "left" | "right";
   width?: string;
+  fullScreenOnMobile?: boolean;
 }
 
 export function Drawer({
@@ -18,6 +19,7 @@ export function Drawer({
   children,
   position = "right",
   width = "400px",
+  fullScreenOnMobile = false,
 }: DrawerProps) {
   useEffect(() => {
     if (isOpen) {
@@ -44,6 +46,10 @@ export function Drawer({
 
   if (!isOpen) return null;
 
+  const style = fullScreenOnMobile
+    ? ({ "--drawer-width": width } as React.CSSProperties)
+    : { width };
+
   return (
     <>
       <div
@@ -54,8 +60,9 @@ export function Drawer({
         className={cn(
           "fixed top-0 bottom-0 z-50 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out",
           position === "left" ? "left-0" : "right-0",
+          fullScreenOnMobile && "w-full md:w-[var(--drawer-width)]",
         )}
-        style={{ width }}
+        style={style}
       >
         <div className="h-full flex flex-col">
           {title && (

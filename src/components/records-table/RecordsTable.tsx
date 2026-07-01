@@ -1,24 +1,37 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { useReactTable, getCoreRowModel, type ColumnDef } from "@tanstack/react-table";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Loader2, AlertCircle, Table, CheckCircle, XCircle } from "lucide-react";
 import { usePocketBase } from "../../context/usePocketBase";
 import type { TrackedRecord } from "../../context/PocketBaseContext";
 import { AISettingsDialog } from "../AISettingsDialog";
 import { AIColumnConfigDialog } from "../AIColumnConfigDialog";
-import { getDisplayColumns, getColumnSize } from "./utils";
+import { getDisplayColumns } from "./utils";
 import type { Column } from "./types";
 import { useTableSelection } from "./hooks/useTableSelection";
 import { useColumnVisibility } from "./hooks/useColumnVisibility";
 import { useAIGeneration } from "./hooks/useAIGeneration";
 import { useTableFilters } from "./hooks/useTableFilters";
-import { CellEditor } from "./CellEditor";
 import { ColumnDrawer } from "./ColumnDrawer";
-import { PreviewPanel } from "./PreviewPanel";
 import { AddRecordsDialog } from "./AddRecordsDialog";
 import { AIBulkDialog } from "./AIBulkDialog";
 import { TableActions } from "./TableActions";
 import { FilterDrawer } from "./FilterDrawer";
-import { TableBody, TableHeader } from "./TableBody";
+import { ModeSwitcher, type TableMode } from "./ModeSwitcher";
+import { MasterDetailView } from "./MasterDetailView";
+import { BulkTableView } from "./BulkTableView";
+import { DetailPanel } from "./DetailPanel";
+import { BulkActionBar } from "./BulkActionBar";
+import { useViewport } from "../../hooks/useViewport";
+
+const MODE_STORAGE_KEY = "records-table-mode";
+
+function loadStoredMode(): TableMode {
+  if (typeof window === "undefined") return "browse";
+  const stored = localStorage.getItem(MODE_STORAGE_KEY);
+  if (stored === "browse" || stored === "individual" || stored === "bulk") {
+    return stored;
+  }
+  return "browse";
+}
 
 export function RecordsTable() {
   const {
@@ -40,21 +53,23 @@ export function RecordsTable() {
   const [relationOptions, setRelationOptions] = useState<
     Record<string, { id: string; [key: string]: unknown }[]>
   >({});
-  const [expandedCells, setExpandedCells] = useState<Record<string, boolean>>({});
-  // Track loading collections using a ref for immediate atomic access
-  const loadingCollectionsRef = useRef<Set<string>>(new Set());
-  const [previewMode, setPreviewMode] = useState<Record<string, boolean>>({});
-  const [selectedCell, setSelectedCell] = useState<{
-    recordId: string;
-    field: string;
-    value: unknown;
-    column: Column;
-  } | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showAISettings, setShowAISettings] = useState(false);
   const [showAIColumnConfig, setShowAIColumnConfig] = useState(false);
   const [configuringColumn, setConfiguringColumn] = useState<string | null>(null);
+  void setConfiguringColumn;
   const [rowsToAdd, setRowsToAdd] = useState(1);
+  const [mode, setMode] = useState<TableMode>(loadStoredMode);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const viewport = useViewport();
+  const loadingCollectionsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(MODE_STORAGE_KEY, mode);
+    }
+  }, [mode]);
 
   const {
     visibleColumnKeys,
@@ -88,17 +103,56 @@ export function RecordsTable() {
     bulkGeneratingColumn,
     showAIBulkDialog,
     setShowAIBulkDialog,
-    handleGenerateAI,
   } = useAIGeneration(trackedRecords, selectedCollection, updateCell);
 
-  console.log('[RecordsTable] Filter props:', { hasActiveFilters, activeFilterCount, displayColumnsLength: displayColumns.length });
+  const loadRelationOptions = useCallback(
+    async (collectionId: string) => {
+      if (relationOptions[collectionId]) return;
+      if (loadingCollectionsRef.current.has(collectionId)) return;
+      loadingCollectionsRef.current.add(collectionId);
+
+      try {
+        if (!client) return;
+        const records = await client.collection(collectionId).getFullList();
+        setRelationOptions((prev) => ({
+          ...prev,
+          [collectionId]: records,
+        }));
+      } catch (err) {
+        console.error("Failed to load relation options:", err);
+      } finally {
+        loadingCollectionsRef.current.delete(collectionId);
+      }
+    },
+    [relationOptions, client],
+  );
+
+  useEffect(() => {
+    const cols = displayColumns.filter((c) => c.type === "relation" && c.collectionId);
+    cols.forEach((col) => {
+      if (col.collectionId) void loadRelationOptions(col.collectionId);
+    });
+  }, [displayColumns, loadRelationOptions]);
+
+  const safeIndex = Math.min(selectedIndex, Math.max(0, filteredRecords.length - 1));
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [selectedCollection?.id]);
+
+  const handleSelectAllBool = useCallback(
+    (checked: boolean) => {
+      handleSelectAll({ target: { checked } } as React.ChangeEvent<HTMLInputElement>);
+    },
+    [handleSelectAll],
+  );
 
   const handleBulkGenerateAI = useCallback(
     async (columnNames?: string[]) => {
       if (!selectedCollection) return;
       if (!columnNames || columnNames.length === 0) {
         const selectedRecords = trackedRecords.filter((r) =>
-          selectedRows.includes(r.id)
+          selectedRows.includes(r.id),
         );
         if (selectedRecords.length === 0) return;
         setShowAIBulkDialog(true);
@@ -107,137 +161,6 @@ export function RecordsTable() {
     },
     [trackedRecords, selectedRows, selectedCollection, setShowAIBulkDialog],
   );
-
-  const loadRelationOptions = useCallback(async (collectionId: string) => {
-    if (relationOptions[collectionId]) return;
-
-    // Check ref atomically - if already loading, return immediately
-    if (loadingCollectionsRef.current.has(collectionId)) {
-      console.log(`[loadRelationOptions] Collection ${collectionId} already loading, skipping`);
-      return;
-    }
-
-    // Add to ref atomically
-    loadingCollectionsRef.current.add(collectionId);
-
-    try {
-      if (!client) return;
-      console.log(`[loadRelationOptions] Loading options for collection: ${collectionId}`);
-      const records = await client.collection(collectionId).getFullList();
-      console.log(`[loadRelationOptions] Successfully loaded ${records.length} options for ${collectionId}`);
-      setRelationOptions((prev) => ({
-        ...prev,
-        [collectionId]: records,
-      }));
-    } catch (err) {
-      console.error("Failed to load relation options:", err);
-    } finally {
-      loadingCollectionsRef.current.delete(collectionId);
-    }
-  }, [relationOptions, client]);
-
-  const columnDefinitions = useMemo<ColumnDef<TrackedRecord>[]>(
-    () => [
-      {
-        id: "select",
-        accessorKey: "__select__",
-        size: 24,
-        minSize: 24,
-        maxSize: 24,
-        header: () => {
-          const allSelected =
-            selectedRows.length > 0 &&
-            selectedRows.length === filteredRecords.length;
-          return (
-            <div className="flex items-center justify-center w-full h-full">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={handleSelectAll}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-3 h-3 flex-shrink-0"
-                autoComplete="off"
-                data-form-type="other"
-                aria-label="Select all rows"
-              />
-            </div>
-          );
-        },
-        cell: ({ row }: any) => {
-          const isChecked = selectedRows.includes(row.original.id);
-          return (
-            <div className="flex items-center justify-center w-full h-full">
-              <input
-                type="checkbox"
-                checked={isChecked}
-                onChange={(e) => handleRowSelect(row.original.id, e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-3 h-3 flex-shrink-0"
-                autoComplete="off"
-                data-form-type="other"
-                aria-label={`Select row ${row.original.id}`}
-              />
-            </div>
-          );
-        },
-        meta: {
-          cellClassName: "px-1 py-2",
-          headerClassName: "px-1 py-3",
-        },
-      },
-      ...displayColumns.map((col) => ({
-        accessorKey: col.key,
-        header: col.name,
-        size: getColumnSize(col),
-        minSize: 50,
-        maxSize: 1000,
-        enableResizing: true,
-        cell: ({ row }: any) => {
-          const value = row.original.data[col.key];
-          const cellKey = `${row.original.id}-${col.key}`;
-          const isExpanded = expandedCells[cellKey];
-
-          return (
-            <CellEditor
-              record={row.original}
-              column={col}
-              value={value}
-              isExpanded={isExpanded}
-              onToggleExpand={() => {
-                setExpandedCells((prev) => ({
-                  ...prev,
-                  [cellKey]: !isExpanded,
-                }));
-              }}
-              onUpdate={(newValue) => {
-                updateCell(row.original.id, col.key, newValue);
-              }}
-              onCellFocus={(recordId, field, value, column) => {
-                setSelectedCell({
-                  recordId,
-                  field,
-                  value,
-                  column,
-                });
-              }}
-              onLoadRelationOptions={loadRelationOptions}
-              relationOptions={relationOptions}
-              onGenerateAI={handleGenerateAI}
-              aiGenerating={aiGenerating}
-              client={client}
-            />
-          );
-        },
-      })),
-    ],
-    [displayColumns, updateCell, getColumnSize, loadRelationOptions, relationOptions, aiGenerating, handleGenerateAI, selectedRows, handleSelectAll, handleRowSelect, expandedCells, previewMode, filteredRecords.length],
-  );
-
-  const table = useReactTable({
-    data: filteredRecords,
-    columns: columnDefinitions,
-    getCoreRowModel: getCoreRowModel(),
-    enableColumnResizing: true,
-    columnResizeMode: "onChange",
-  });
 
   const handleAddRows = useCallback(() => {
     addNewRows(rowsToAdd);
@@ -251,8 +174,6 @@ export function RecordsTable() {
 
   const handleDiscardChanges = useCallback(() => {
     discardChanges();
-    setExpandedCells({});
-    setPreviewMode({});
   }, [discardChanges]);
 
   useEffect(() => {
@@ -297,23 +218,29 @@ export function RecordsTable() {
     );
   }
 
+  const hideBulk = viewport.isMobile;
+  const visibleMode: TableMode = hideBulk && mode === "bulk" ? "browse" : mode;
+
   return (
     <div className="space-y-4">
-      <TableActions
-        hasChanges={hasChanges}
-        isSaving={isSaving}
-        selectedRowsCount={selectedRows.length}
-        showColumnSelector={showColumnSelector}
-        setShowColumnSelector={setShowColumnSelector}
-        setShowAISettings={setShowAISettings}
-        onAddRecords={() => setShowAddDialog(true)}
-        onDiscardChanges={handleDiscardChanges}
-        onSaveChanges={handleSaveChanges}
-        onShowAIBulkDialog={() => setShowAIBulkDialog(true)}
-        onShowFilters={() => setShowFilterDrawer(true)}
-        activeFilterCount={activeFilterCount}
-        hasActiveFilters={hasActiveFilters}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <TableActions
+          hasChanges={hasChanges}
+          isSaving={isSaving}
+          selectedRowsCount={selectedRows.length}
+          showColumnSelector={showColumnSelector}
+          setShowColumnSelector={setShowColumnSelector}
+          setShowAISettings={setShowAISettings}
+          onAddRecords={() => setShowAddDialog(true)}
+          onDiscardChanges={handleDiscardChanges}
+          onSaveChanges={handleSaveChanges}
+          onShowAIBulkDialog={() => setShowAIBulkDialog(true)}
+          onShowFilters={() => setShowFilterDrawer(true)}
+          activeFilterCount={activeFilterCount}
+          hasActiveFilters={hasActiveFilters}
+        />
+        <ModeSwitcher mode={mode} onChange={setMode} hideBulk={hideBulk} />
+      </div>
 
       {saveResult && (
         <div className="flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg">
@@ -351,25 +278,22 @@ export function RecordsTable() {
         </div>
       )}
 
-      <div className="flex gap-4">
-        <div className="flex-1 border border-slate-200 rounded-lg overflow-hidden relative">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <TableHeader
-                table={table}
-                setConfiguringColumn={setConfiguringColumn}
-                onShowAIColumnConfig={() => setShowAIColumnConfig(true)}
-              />
-              <TableBody table={table} trackedRecords={trackedRecords} />
-            </table>
-          </div>
-        </div>
-
-        <PreviewPanel
-          selectedCell={selectedCell}
-          onClose={() => setSelectedCell(null)}
-        />
-      </div>
+      <RecordsBody
+        mode={visibleMode}
+        filteredRecords={filteredRecords}
+        displayColumns={displayColumns}
+        selectedRows={selectedRows}
+        onToggleRowSelect={handleRowSelect}
+        onSelectAll={handleSelectAllBool}
+        selectedIndex={safeIndex}
+        onSelectIndex={setSelectedIndex}
+        updateCell={updateCell}
+        relationOptions={relationOptions}
+        aiGenerating={aiGenerating}
+        onClearSelection={() => handleSelectAllBool(false)}
+        onShowAIBulkDialog={() => setShowAIBulkDialog(true)}
+        bulkGenerating={Object.keys(aiGenerating).length > 0}
+      />
 
       <AddRecordsDialog
         isOpen={showAddDialog}
@@ -377,10 +301,7 @@ export function RecordsTable() {
         onAdd={handleAddRows}
       />
 
-      <AISettingsDialog
-        isOpen={showAISettings}
-        onClose={() => setShowAISettings(false)}
-      />
+      <AISettingsDialog isOpen={showAISettings} onClose={() => setShowAISettings(false)} />
 
       <AIColumnConfigDialog
         isOpen={showAIColumnConfig}
@@ -417,6 +338,105 @@ export function RecordsTable() {
         onClearAll={clearAllFilters}
         displayColumns={displayColumns}
         relationOptions={relationOptions}
+      />
+    </div>
+  );
+}
+
+interface RecordsBodyProps {
+  mode: TableMode;
+  filteredRecords: TrackedRecord[];
+  displayColumns: Column[];
+  selectedRows: string[];
+  onToggleRowSelect: (rowId: string, checked: boolean) => void;
+  onSelectAll: (checked: boolean) => void;
+  selectedIndex: number;
+  onSelectIndex: (index: number) => void;
+  updateCell: (rowId: string, field: string, value: unknown) => void;
+  relationOptions: Record<string, { id: string; [key: string]: unknown }[]>;
+  aiGenerating: Record<string, boolean>;
+  onClearSelection: () => void;
+  onShowAIBulkDialog: () => void;
+  bulkGenerating: boolean;
+}
+
+function RecordsBody({
+  mode,
+  filteredRecords,
+  displayColumns,
+  selectedRows,
+  onToggleRowSelect,
+  onSelectAll,
+  selectedIndex,
+  onSelectIndex,
+  updateCell,
+  relationOptions,
+  aiGenerating,
+  onClearSelection,
+  onShowAIBulkDialog,
+  bulkGenerating,
+}: RecordsBodyProps) {
+  const selectedRecord = filteredRecords[selectedIndex] || null;
+
+  if (mode === "bulk") {
+    return (
+      <div className="space-y-3">
+        <BulkTableView
+          records={filteredRecords}
+          columns={displayColumns}
+          selectedRows={selectedRows}
+          onToggleRowSelect={onToggleRowSelect}
+          onSelectAll={onSelectAll}
+          onUpdateCell={updateCell}
+          aiGenerating={aiGenerating}
+        />
+        <BulkActionBar
+          selectedCount={selectedRows.length}
+          totalCount={filteredRecords.length}
+          onClearSelection={onClearSelection}
+          onGenerateAI={onShowAIBulkDialog}
+          isGenerating={bulkGenerating}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <MasterDetailView
+        records={filteredRecords}
+        columns={displayColumns}
+        selectedIndex={selectedIndex}
+        onSelectIndex={onSelectIndex}
+        selectedRows={selectedRows}
+        onToggleRowSelect={onToggleRowSelect}
+        onSelectAll={onSelectAll}
+        renderDetail={() => (
+          <DetailPanel
+            key={selectedRecord?.id ?? "empty"}
+            record={selectedRecord}
+            columns={displayColumns}
+            relationOptions={relationOptions}
+            onUpdateCell={updateCell}
+            onPrev={() => onSelectIndex(Math.max(0, selectedIndex - 1))}
+            onNext={() =>
+              onSelectIndex(Math.min(filteredRecords.length - 1, selectedIndex + 1))
+            }
+            hasPrev={selectedIndex > 0}
+            hasNext={selectedIndex < filteredRecords.length - 1}
+            position={selectedIndex}
+            total={filteredRecords.length}
+            initialEditMode={mode === "individual"}
+            className="max-h-[calc(100vh-220px)] overflow-y-auto"
+          />
+        )}
+      />
+      <BulkActionBar
+        selectedCount={selectedRows.length}
+        totalCount={filteredRecords.length}
+        onClearSelection={onClearSelection}
+        onGenerateAI={onShowAIBulkDialog}
+        isGenerating={bulkGenerating}
       />
     </div>
   );

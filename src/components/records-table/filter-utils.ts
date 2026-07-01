@@ -2,6 +2,14 @@ import type { TrackedRecord } from "../../context/PocketBaseContext";
 import type { Column } from "./types";
 import { FilterOperator } from "./filter-types";
 
+function isEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object") return Object.keys(value).length === 0;
+  return false;
+}
+
 export function getOperatorsForType(columnType: string): FilterOperator[] {
   switch (columnType) {
     case "text":
@@ -14,6 +22,8 @@ export function getOperatorsForType(columnType: string): FilterOperator[] {
         FilterOperator.ENDS_WITH,
         FilterOperator.EQUALS,
         FilterOperator.NOT_EQUALS,
+        FilterOperator.IS_EMPTY,
+        FilterOperator.IS_NOT_EMPTY,
       ];
     case "number":
       return [
@@ -23,6 +33,8 @@ export function getOperatorsForType(columnType: string): FilterOperator[] {
         FilterOperator.LESS_THAN,
         FilterOperator.GREATER_EQUAL,
         FilterOperator.LESS_EQUAL,
+        FilterOperator.IS_EMPTY,
+        FilterOperator.IS_NOT_EMPTY,
       ];
     case "date":
       return [
@@ -30,21 +42,29 @@ export function getOperatorsForType(columnType: string): FilterOperator[] {
         FilterOperator.BEFORE,
         FilterOperator.AFTER,
         FilterOperator.BETWEEN,
+        FilterOperator.IS_EMPTY,
+        FilterOperator.IS_NOT_EMPTY,
       ];
     case "select":
       return [
         FilterOperator.EQUALS,
         FilterOperator.NOT_EQUALS,
+        FilterOperator.IS_EMPTY,
+        FilterOperator.IS_NOT_EMPTY,
       ];
     case "relation":
       return [
         FilterOperator.EQUALS,
         FilterOperator.NOT_EQUALS,
+        FilterOperator.IS_EMPTY,
+        FilterOperator.IS_NOT_EMPTY,
       ];
     default:
       return [
         FilterOperator.EQUALS,
         FilterOperator.NOT_EQUALS,
+        FilterOperator.IS_EMPTY,
+        FilterOperator.IS_NOT_EMPTY,
       ];
   }
 }
@@ -54,6 +74,9 @@ export function applyTextFilter(
   operator: FilterOperator,
   filterValue: unknown,
 ): boolean {
+  if (operator === FilterOperator.IS_EMPTY) return isEmptyValue(value);
+  if (operator === FilterOperator.IS_NOT_EMPTY) return !isEmptyValue(value);
+
   const strValue = String(value || "").toLowerCase();
   const strFilter = String(filterValue || "").toLowerCase();
 
@@ -80,6 +103,9 @@ export function applyNumberFilter(
   operator: FilterOperator,
   filterValue: unknown,
 ): boolean {
+  if (operator === FilterOperator.IS_EMPTY) return isEmptyValue(value);
+  if (operator === FilterOperator.IS_NOT_EMPTY) return !isEmptyValue(value);
+
   const numValue = Number(value);
   const numFilter = Number(filterValue);
 
@@ -109,6 +135,9 @@ export function applyDateFilter(
   filterValue: unknown,
   filterValueTo?: unknown,
 ): boolean {
+  if (operator === FilterOperator.IS_EMPTY) return isEmptyValue(value);
+  if (operator === FilterOperator.IS_NOT_EMPTY) return !isEmptyValue(value);
+
   const dateValue = new Date(value as string);
   const dateFilter = new Date(filterValue as string);
   const dateFilterTo = filterValueTo ? new Date(filterValueTo as string) : null;
@@ -137,6 +166,9 @@ export function applySelectFilter(
   operator: FilterOperator,
   filterValue: unknown,
 ): boolean {
+  if (operator === FilterOperator.IS_EMPTY) return isEmptyValue(value);
+  if (operator === FilterOperator.IS_NOT_EMPTY) return !isEmptyValue(value);
+
   const strValue = String(value || "");
   const strFilter = String(filterValue || "");
 
@@ -155,6 +187,9 @@ export function applyRelationFilter(
   operator: FilterOperator,
   filterValue: unknown,
 ): boolean {
+  if (operator === FilterOperator.IS_EMPTY) return isEmptyValue(value);
+  if (operator === FilterOperator.IS_NOT_EMPTY) return !isEmptyValue(value);
+
   const strValue = String(value || "");
   const strFilter = String(filterValue || "");
 
