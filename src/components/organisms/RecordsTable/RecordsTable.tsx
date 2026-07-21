@@ -29,6 +29,10 @@ import { useViewport } from "../../../hooks/useViewport";
 import { getDisplayColumns } from "../../../utils/formatters";
 import { FilterDrawer } from "../../records-table/FilterDrawer";
 import { generateAIContent, generateAIImage } from "../../../context/useAI";
+import { useAgent } from "../../../agent/useAgent";
+import { AgentChat } from "../../agent";
+import type { AgentContextSnapshot } from "../../../agent/agent.types";
+import { FilterOperator } from "../../records-table/filter-types";
 
 export function RecordsTable() {
   const {
@@ -49,6 +53,7 @@ export function RecordsTable() {
     client,
     getAIConfig,
     aiApiKey,
+    collections,
   } = usePocketBase();
 
   const [relationOptions, setRelationOptions] = useState<
@@ -210,7 +215,7 @@ export function RecordsTable() {
   const handleShowAIBulkDialog = useCallback(() => {
     if (selectedRows.length === 0) return;
     setShowAIBulkDialog(true);
-  }, [selectedRows]);
+  }, [selectedRows, setShowAIBulkDialog]);
 
   const handleShowImportJsonDialog = useCallback(() => {
     setShowImportJsonDialog(true);
@@ -384,6 +389,69 @@ export function RecordsTable() {
     setConfiguringColumn(columnName);
     setShowAIColumnConfig(true);
   }, []);
+
+  const handleSetColumnFilter = useCallback(
+    (columnKey: string, value: string) => {
+      setColumnFilter(columnKey, {
+        columnKey,
+        operator: FilterOperator.CONTAINS,
+        value,
+      });
+    },
+    [setColumnFilter],
+  );
+
+  const handleSetMode = useCallback(
+    (nextMode: string) => {
+      setMode(nextMode as TableMode);
+    },
+    [setMode],
+  );
+
+  const agentContextSnapshot: AgentContextSnapshot = {
+    isConnected: !!client,
+    selectedCollectionName: selectedCollection?.name || null,
+    collectionCount: collections.length,
+    totalRecords: filteredRecords.length,
+    modifiedRecords: trackedRecords.filter((r) => r.state === "modified").length,
+    newRecords: trackedRecords.filter((r) => r.state === "new").length,
+    selectedRows: selectedRows.length,
+    hasActiveFilters,
+    activeFilterCount,
+    mode,
+    visibleColumns: Array.from(visibleColumnKeys),
+    aiApiKeyConfigured: !!aiApiKey,
+  };
+
+  const {
+    messages: agentMessages,
+    isLoading: agentLoading,
+    isOpen: agentOpen,
+    setIsOpen: setAgentOpen,
+    sendMessage: sendAgentMessage,
+    selectedModel: agentSelectedModel,
+    setSelectedModel: setAgentSelectedModel,
+  } = useAgent(
+    {
+      setGlobalSearch,
+      clearAllFilters,
+      setColumnFilter: handleSetColumnFilter,
+      setMode: handleSetMode,
+      handleSelectAllBool,
+      handleBulkGenerateAI,
+      setShowAISettings,
+      setShowAIColumnConfig: handleShowAIColumnConfig,
+      setShowImportJsonDialog,
+      setShowExportDialog,
+      handleRequestDelete,
+      filteredRecords,
+      selectedRows,
+      mode,
+      hasActiveFilters,
+      activeFilterCount,
+    },
+    agentContextSnapshot,
+  );
 
    return (
     <>
@@ -564,6 +632,16 @@ export function RecordsTable() {
           onDismiss={() => setImportResult(null)}
         />
       )}
+
+      <AgentChat
+        messages={agentMessages}
+        isLoading={agentLoading}
+        isOpen={agentOpen}
+        onOpenChange={setAgentOpen}
+        onSend={sendAgentMessage}
+        selectedModel={agentSelectedModel}
+        onModelChange={setAgentSelectedModel}
+      />
     </>
   );
 }
